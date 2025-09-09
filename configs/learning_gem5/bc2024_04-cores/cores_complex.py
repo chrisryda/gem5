@@ -4,7 +4,7 @@ from processors import (
     Big,
     Little,
 )
-
+from m5.objects import os
 from m5.objects import DDR4_2400_8x8
 
 from gem5.components.boards.simple_board import SimpleBoard
@@ -12,7 +12,9 @@ from gem5.components.cachehierarchies.classic.private_l1_cache_hierarchy import 
     PrivateL1CacheHierarchy,
 )
 from gem5.components.memory.memory import ChanneledMemory
+from gem5.components.memory import SingleChannelDDR3_1600
 from gem5.resources.resource import obtain_resource
+from gem5.resources.resource import BinaryResource
 from gem5.simulate.simulator import Simulator
 
 # A simple script to test custom processors
@@ -55,12 +57,13 @@ arguments = parser.parse_args()
 
 cache_hierarchy = PrivateL1CacheHierarchy(l1d_size="1KiB", l1i_size="1KiB")
 
-memory = ChanneledMemory(
-    dram_interface_class=DDR4_2400_8x8,
-    num_channels=2,
-    interleaving_size=128,
-    size="1 GiB",
-)
+# memory = ChanneledMemory(
+#     dram_interface_class=DDR4_2400_8x8,
+#     num_channels=2,
+#     interleaving_size=128,
+#     size="1 GiB",
+# )
+memory = SingleChannelDDR3_1600(size="32MiB")
 
 if arguments.processor.lower() == "big":
     processor = Big()
@@ -78,8 +81,21 @@ board = SimpleBoard(
 
 # Resources can be found at https://resources.gem5.org/
 # https://resources.gem5.org/resources/riscv-getting-started-benchmark-suite?version=1.0.0
-workload = obtain_resource("arm-matrix-multiply-run")
-board.set_workload(workload)
+# workload = obtain_resource("arm-matrix-multiply-run")
+# board.set_workload(workload)
+# board.set_se_binary_workload(
+#     obtain_resource("arm-hello64-static", resource_version="1.0.0")
+# )
+
+thispath = os.path.dirname(os.path.realpath(__file__))
+print(thispath)
+binary = os.path.join(
+    thispath,
+    "../../../",
+    "tests/test-progs/hello/bin/arm/linux/hello",
+)
+
+board.set_se_binary_workload(BinaryResource(binary))
 simulator = Simulator(board=board)
 simulator.run()
 print(
