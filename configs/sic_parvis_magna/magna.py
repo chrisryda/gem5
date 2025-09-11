@@ -17,7 +17,7 @@ board = SimpleBoard(
     cache_hierarchy=cache_hierarchy,
 )
 
-binary = "/home/crd/nec/gem5/tests/test-progs/hello/bin/arm/linux/hello"
+binary = "/home/crd/nec/gem5/tests/test-progs/simsim/bin/simple_for"
 board.set_se_binary_workload(BinaryResource(binary))
 
 simulator = Simulator(board=board)
