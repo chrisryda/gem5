@@ -1072,6 +1072,25 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
 
         inst->renameSrcReg(src_idx, renamed_reg);
 
+        Tick ts, delta;
+        auto ts_it = tsRegRename.find(src_reg.index()); 
+        if (ts_it != tsRegRename.end()) 
+        {
+            ts = ts_it->second;
+            tsRegRename.erase(src_reg.index());
+            delta = curTick() - ts;
+            printf("[tid:%d/%d][ts:%ld] Lookup of source arch reg %d (%s) returned phys reg %i (%s). It was renamed at %ld, giving delta = %ld\n\n",
+                    tid, (cpu->numThreads - 1), curTick(), src_reg.index(), src_reg.className(), renamed_reg->index(), renamed_reg->className(), ts, delta
+            );
+
+            auto dd_it = distDependecies.find(delta);
+            if (dd_it != distDependecies.end()) {
+                dd_it->second += 1;
+            } else {
+                distDependecies.insert({delta, 1});
+            }
+        }
+
         // See if the register is ready or not.
         if (scoreboard->getReg(renamed_reg)) {
             DPRINTF(Rename,
@@ -1142,6 +1161,15 @@ Rename::renameDestRegs(const DynInstPtr &inst, ThreadID tid)
         inst->renameDestReg(dest_idx,
                             rename_result.first,
                             rename_result.second);
+        
+        if (rename_result.first != rename_result.second && dest_reg.classValue() != RegClassType::CCRegClass) 
+        {
+            tsRegRename.insert({dest_reg.index(), curTick()});
+            printf("[tid:%d/%d][ts:%ld] Arch dest reg %i (%s) --> phys reg %i (%i) on instr:%lu [%s  ]\n",
+                tid, (cpu->numThreads - 1), tsRegRename.at(dest_reg.index()), dest_reg.index(), dest_reg.className(), rename_result.first->index(), rename_result.first->flatIndex(),
+                inst->seqNum, inst->staticInst->disassemble(inst->pcState().instAddr()).c_str()
+            );
+        }
 
         ++stats.renamedOperands;
     }

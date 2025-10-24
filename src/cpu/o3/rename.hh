@@ -368,6 +368,16 @@ class Rename
     /** Pointer to the scoreboard. */
     Scoreboard *scoreboard;
 
+    /** Unordered map of <archRegIdx, TS>, where TS is the
+     * timestamp (ticks) of when the dest archReg got renamed 
+     */
+    std::unordered_map<int, Tick> tsRegRename; 
+
+    /** Unordered map of <delta, num>, where num is the number of 
+     * instructions with delta (ticks) distance to a dependency
+     */
+    std::unordered_map<Tick, int> distDependecies;
+
     /** Count of instructions in progress that have been sent off to the IQ
      * and ROB, but are not yet included in their occupancy counts.
      */
