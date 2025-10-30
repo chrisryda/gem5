@@ -753,6 +753,8 @@ Rename::renameInsts(ThreadID tid)
 
     instsInProgress[tid] += renamed_insts;
     stats.renamedInsts += renamed_insts;
+    
+    if (curTick() > 835030000) { writeDistDependencies(); }
 
     // If we wrote to the time buffer, record this.
     if (toIEWIndex) {
@@ -1079,15 +1081,19 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
             ts = ts_it->second;
             tsRegRename.erase(src_reg.index());
             delta = curTick() - ts;
-            printf("[tid:%d/%d][ts:%ld] Lookup of source arch reg %d (%s) returned phys reg %i (%s). It was renamed at %ld, giving delta = %ld\n\n",
-                    tid, (cpu->numThreads - 1), curTick(), src_reg.index(), src_reg.className(), renamed_reg->index(), renamed_reg->className(), ts, delta
-            );
-
-            auto dd_it = distDependecies.find(delta);
-            if (dd_it != distDependecies.end()) {
-                dd_it->second += 1;
-            } else {
-                distDependecies.insert({delta, 1});
+            
+            if (renamed_reg->classValue() != RegClassType::CCRegClass && renamed_reg->classValue() != RegClassType::InvalidRegClass)
+            {
+                printf("[tid:%d/%d][ts:%ld] Lookup of source arch reg %d (%s) returned phys reg %i (%s). It was renamed at %ld, giving delta = %ld\n\n",
+                        tid, (cpu->numThreads - 1), curTick(), src_reg.index(), src_reg.className(), renamed_reg->index(), renamed_reg->className(), ts, delta
+                );
+                
+                auto dd_it = distDependecies.find(delta);
+                if (dd_it != distDependecies.end()) {
+                    dd_it->second += 1;
+                } else {
+                    distDependecies.insert({delta, 1});
+                }
             }
         }
 
@@ -1165,6 +1171,7 @@ Rename::renameDestRegs(const DynInstPtr &inst, ThreadID tid)
         if (rename_result.first != rename_result.second && dest_reg.classValue() != RegClassType::CCRegClass) 
         {
             tsRegRename.insert({dest_reg.index(), curTick()});
+            
             printf("[tid:%d/%d][ts:%ld] Arch dest reg %i (%s) --> phys reg %i (%i) on instr:%lu [%s  ]\n",
                 tid, (cpu->numThreads - 1), tsRegRename.at(dest_reg.index()), dest_reg.index(), dest_reg.className(), rename_result.first->index(), rename_result.first->flatIndex(),
                 inst->seqNum, inst->staticInst->disassemble(inst->pcState().instAddr()).c_str()
@@ -1481,6 +1488,24 @@ Rename::dumpHistory()
 
             buf_it++;
         }
+    }
+}
+
+void
+Rename::writeDistDependencies()
+{
+    if (!distDependecies.empty()) 
+    {
+        std::ofstream csv_file;
+        csv_file.open("dist_dependencies.csv");
+        csv_file << "ticks,intructions\n";
+        auto dd_it = distDependecies.begin();
+        while (dd_it != distDependecies.end())
+        {
+            csv_file << dd_it->first << "," << dd_it->second << "\n";
+            dd_it++;
+        }
+        csv_file.close();
     }
 }
 

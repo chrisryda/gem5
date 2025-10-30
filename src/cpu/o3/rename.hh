@@ -290,6 +290,9 @@ class Rename
      */
     void serializeAfter(InstQueue &inst_list, ThreadID tid);
 
+    /** Writes the data in distDependencies to file */
+    void writeDistDependencies();
+
     /** Holds the information for each destination register rename. It holds
      * the instruction's sequence number, the arch register, the old physical
      * register for that arch. register, and the new physical register.
