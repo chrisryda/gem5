@@ -8,7 +8,12 @@ import sys
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-t', dest='plt_type', type=str, help='The type of plot {sca, hist, sorted}')
+parser.add_argument(
+    "-t",
+    dest="plt_type",
+    type=str,
+    help="The type of plot {sca, hist, sorted}",
+)
 args = parser.parse_args()
 
 df = pd.read_csv("dist_dependencies.csv").to_numpy()
@@ -17,27 +22,32 @@ instructions = np.array([e[1] for e in df])
 
 plt_type = args.plt_type if args.plt_type else "scatter"
 match plt_type:
-    case 'scatter':
+    case "scatter":
         plt.scatter(delta, instructions)
 
-    case 'hist':
-        plt.hist(delta, bins='auto', edgecolor='black', alpha=0.9)
-                
-    case 'sorted':
+    case "hist":
+        delta_only = []
+        for d, i in zip(delta, instructions):
+            for _ in range(i):
+                delta_only.append(d)
+        delta_only = np.array(delta_only)
+        plt.hist(delta_only, bins="auto", edgecolor="black", alpha=0.9)
+
+    case "sorted":
         sort = df[df[:, 0].argsort()]
         x = np.array([e[0] for e in sort])
         y = np.array([e[1] for e in sort])
         a, b, c = np.polyfit(x, y, 2)
         line = a*x*x + b*x + c
-        plt.plot(x, y, line, color='red')
-        
+        plt.plot(x, y, line, color="red")
+
     case _:
         print("Invalid option, exiting")
         sys.exit(0)
-        
+
 plt.xlabel("Delta (ticks)")
 plt.ylabel("Number of instructions")
-plt.grid(True, linestyle='--', alpha=0.5)
+plt.grid(True, linestyle="--", alpha=0.5)
 try:
     plt.show()
 except KeyboardInterrupt:

@@ -23,6 +23,4 @@ board.set_se_binary_workload(BinaryResource(binary))
 simulator = Simulator(board=board)
 simulator.run()
 
-print(
-    f"Ran a total of {simulator.get_current_tick() / 1e12} simulated seconds"
-)
+print(f"Ran a total of {simulator.get_current_tick()} simulated ticks")
