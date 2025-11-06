@@ -8,10 +8,10 @@ import sys
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-t", dest="plt_type", type=str, help="The type of plot {sca, hist, sorted}")
+parser.add_argument("-t", dest="plt_type", type=str, help="The type of plot {scatter, hist, sorted}")
 parser.add_argument("-f", dest="file_name", type=str, help="The file to plot {whet<1,5,10,15,20>}")
-parser.add_argument('-s', dest="save_plot", action=argparse.BooleanOptionalAction)
-parser.add_argument('-v', dest="add_values", action=argparse.BooleanOptionalAction)
+parser.add_argument('-s', dest="save_plot", action=argparse.BooleanOptionalAction, help="Save plot to file")
+parser.add_argument('-v', dest="add_values", action=argparse.BooleanOptionalAction, help="Add num values to the bars in the histogram")
 args = parser.parse_args()
 
 plt_type = args.plt_type if args.plt_type else "scatter"
@@ -33,6 +33,7 @@ def make_hist() -> None:
                     20,                       # height (where text goes)
                     str(int(count)),          # text label
                     ha='center', va='bottom', # text alignment
+                    rotation=90
                 )
     return
     
@@ -62,7 +63,7 @@ match plt_type:
         print("Invalid option, exiting")
         sys.exit(0)
 
-plt.xlabel("Delta (ticks)")
+plt.xlabel("Delta (cycles)")
 plt.ylabel("Number of instructions")
 plt.grid(True, linestyle="--", alpha=0.5)
 try:
