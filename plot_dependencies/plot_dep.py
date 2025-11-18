@@ -12,12 +12,13 @@ parser.add_argument("-hist",  dest="hist_type",  action=argparse.BooleanOptional
 parser.add_argument('-histv', dest="histv_type", action=argparse.BooleanOptionalAction, help="Plot histogram with num values on the bars.")
 parser.add_argument('-s', dest="save_plot", action=argparse.BooleanOptionalAction, help="Save plot to file")
 parser.add_argument("-f", dest="file_name", type=str, help="The file to plot")
+parser.add_argument("-x", dest="x_lim", type=int, help="The x limit of the plot")
 args = parser.parse_args()
 
 def make_hist() -> None:
     delta_only = []
     for d, i in zip(delta, instructions):
-        if d <= 100:
+        if d <= x_lim:
             for _ in range(i):
                 delta_only.append(d)
     delta_only = np.array(delta_only)
@@ -42,6 +43,7 @@ file_name = args.file_name if args.file_name else "whet1B"
 df = pd.read_csv(f"plot_dependencies/stats/dist_dependencies_{file_name}.csv").to_numpy()
 delta = np.array([e[0] for e in df])
 instructions = np.array([e[1] for e in df])
+x_lim = args.x_lim if args.x_lim else delta.max() 
 
 if args.hist_type or args.histv_type:
     make_hist()
@@ -54,7 +56,7 @@ else:
 
 plt.xlabel("Delta (cycles)")
 plt.ylabel("Number of instructions")
-plt.xlim((-0.5, 100.5))
+plt.xlim((-0.5, (x_lim+0.5)))
 plt.grid(True, linestyle="--", alpha=0.5)
 try:
     if args.save_plot:
