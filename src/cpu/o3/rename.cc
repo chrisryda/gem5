@@ -1081,7 +1081,6 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
         if (ts_it != tsRegRename.end()) 
         {
             ts = ts_it->second;
-            tsRegRename.erase(src_reg.index());
             delta = c - ts;
             
             if (renamed_reg->classValue() != RegClassType::CCRegClass && renamed_reg->classValue() != RegClassType::InvalidRegClass)
