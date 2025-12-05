@@ -755,6 +755,7 @@ Rename::renameInsts(ThreadID tid)
     stats.renamedInsts += renamed_insts;
     
     // if (curTick() > xx999950000) { writeDistDependencies(); }
+    if (curTick() > 99999950000) { writeDistDependencies(); }
 
     // If we wrote to the time buffer, record this.
     if (toIEWIndex) {
@@ -1083,7 +1084,10 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
             ts = ts_it->second;
             delta = c - ts;
             
-            if (renamed_reg->classValue() != RegClassType::CCRegClass && renamed_reg->classValue() != RegClassType::InvalidRegClass)
+            if (renamed_reg->classValue() != RegClassType::MiscRegClass && 
+                renamed_reg->classValue() != RegClassType::InvalidRegClass &&
+                renamed_reg->classValue() != RegClassType::CCRegClass
+            )
             {
                 printf("[tid:%d/%d][t:%ld][c:%" PRIu64 "] Lookup of source arch reg %d (%s) returned phys reg %i (%s). It was renamed at %" PRIu64 ", giving delta = %" PRIu64 "\n\n",
                     tid, (cpu->numThreads - 1), t, c, src_reg.index(), src_reg.className(), renamed_reg->index(), renamed_reg->className(), ts, delta
@@ -1169,7 +1173,10 @@ Rename::renameDestRegs(const DynInstPtr &inst, ThreadID tid)
                             rename_result.first,
                             rename_result.second);
         
-        if (rename_result.first != rename_result.second && dest_reg.classValue() != RegClassType::CCRegClass) 
+        if (dest_reg.classValue() != RegClassType::InvalidRegClass &&
+            dest_reg.classValue() != RegClassType::MiscRegClass &&
+            dest_reg.classValue() != RegClassType::CCRegClass
+        ) 
         {
             Tick t = curTick();
             uint64_t c = uint64_t(cpu->ticksToCycles(t));
@@ -1501,7 +1508,7 @@ Rename::writeDistDependencies()
     if (!distDependecies.empty()) 
     {
         std::ofstream csv_file;
-        csv_file.open("dist_dependencies_xx.csv");
+        csv_file.open("dist_dependencies_xx100B.csv");
         csv_file << "cycles,intructions\n";
         auto dd_it = distDependecies.begin();
         while (dd_it != distDependecies.end())
