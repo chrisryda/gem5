@@ -22,9 +22,9 @@ def get_num_ticks(ticks : str) -> int:
     raise ValueError(f"Unrecognized format: {ticks}")
 
 processor = Magna()
-memory = SingleChannelDDR3_1600(size="32MiB")
+memory = SingleChannelDDR3_1600(size="16GiB")
 cache_hierarchy = NoCache()
-
+    
 # For fast-forwarding, might need it later  
 # processor = SimpleSwitchableProcessor(
 #     starting_core_type=CPUTypes.ATOMIC,
@@ -62,11 +62,16 @@ match binary:
     case "mcf":
         binary_path = "/home/crd/nec/gem5/tests/test-progs/505.mcf_r/src/program"
         args = ["/home/crd/nec/gem5/tests/test-progs/505.mcf_r/data/test/input/inp.in"]
+    case "gcc":
+        binary_path = "/home/crd/nec/gem5/tests/test-progs/502.gcc_r/src/cpugcc_r"
+        args = ["/home/crd/nec/gem5/tests/test-progs/502.gcc_r/data/refrate/input/gcc-pp.c"]
 
 board.set_se_binary_workload(binary=BinaryResource(binary_path), arguments=args)
 simulator = Simulator(board=board)
 print(f"Running bencmark {binary} for {ticks} ticks\n")
 
+# simulator.schedule_max_insts(1_000_000_000) 
+# simulator.run()
 simulator.run(get_num_ticks(ticks))
 
 print(f"Ran a total of {simulator.get_current_tick()} simulated ticks")
