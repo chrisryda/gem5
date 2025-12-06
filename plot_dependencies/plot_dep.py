@@ -21,7 +21,7 @@ args = parser.parse_args()
 file_name = args.file_name if args.file_name else "whet1B"
 
 def make_cumul():
-    df = pd.read_csv(f"plot_dependencies/stats/dist_dependencies_{file_name}.csv")
+    df = pd.read_csv(f"/home/crd/nec/gem5/plot_dependencies/stats/dist_dependencies_{file_name}.csv")
     df = df.sort_values("delta")
     df["cum_num"] = df["num"].cumsum()
     df["cum_pct"] = df["cum_num"] / df["num"].sum() * 100
@@ -32,12 +32,13 @@ def make_cumul():
     plt.title(f"Cumulative graph for {file_name}")
     plt.xlabel("Delta (cycles)")
     plt.ylabel("Cumulative % of instructions")
+    plt.yticks(np.arange(0, 100+1, 10))
     x_lim = args.x_lim if args.x_lim else df["delta"].max()
     return (x_lim, 100, "cumul")
 
 
 def make_hist():
-    df = pd.read_csv(f"plot_dependencies/stats/dist_dependencies_{file_name}.csv")
+    df = pd.read_csv(f"/home/crd/nec/gem5/plot_dependencies/stats/dist_dependencies_{file_name}.csv")
     delta_only = []
     x_lim = args.x_lim if args.x_lim else df["delta"].max()
     y_lim = args.y_lim if args.y_lim else df["num"].max()
@@ -48,14 +49,21 @@ def make_hist():
     delta_only = np.array(delta_only)
     
     bins = np.arange(delta_only.min(), delta_only.max() + 2) - 0.5
-    counts, bins, _ = plt.hist(delta_only, bins=bins, edgecolor="black", alpha=0.9)
+    counts, bins, _ = plt.hist(delta_only, bins=bins, edgecolor="black", alpha=1.0)
     
     if args.histv_type:
         for count, x in zip(counts, bins):
             if x < x_lim and count != 0:
+                if args.save_plot and count < 0.5e6:
+                    height = 20_000
+                elif (count < y_lim):
+                    height = 0.5*count    
+                else:
+                    height = 0.8*y_lim
+                    
                 plt.text(
                     x + (bins[1]-bins[0])/2,  # midpoint of each bin
-                    1000,                     # height (where text goes)
+                    height,                   # height (where text goes)
                     str(int(count)),          # text label
                     ha='center', va='bottom', # text alignment
                     rotation=90,
@@ -68,7 +76,7 @@ def make_hist():
     return (x_lim, y_lim, "hist")
 
 def make_scatter():
-    df = pd.read_csv(f"plot_dependencies/stats/dist_dependencies_{file_name}.csv").to_numpy()
+    df = pd.read_csv(f"/home/crd/nec/gem5/plot_dependencies/stats/dist_dependencies_{file_name}.csv").to_numpy()
     delta = np.array([e[0] for e in df])
     num = np.array([e[1] for e in df])
     plt.scatter(delta, num)
@@ -87,13 +95,17 @@ elif args.cumul or args.cumulog:
 else:
     x_lim, y_lim, plt_type = make_scatter()
 
+if x_lim <= 100:
+    plt.xticks(np.arange(0, (x_lim+1), 5))
+
 plt.xlim((-0.5, (x_lim+0.5)))
 plt.ylim((-0.5, y_lim))
 plt.grid(True, linestyle="--", alpha=0.5)
 try:
     if args.save_plot:
         plt.savefig(
-            f"/home/crd/Documents/y6s1/project-TDT4501/{file_name}_{plt_type}.pdf",
+            f"/home/crd/Documents/y6s1/project-TDT4501/{plt_type}_plots/{file_name}_{plt_type}.pdf",
+            # f"/home/crd/Documents/y6s1/project-TDT4501/{file_name}_{plt_type}_full.pdf",
             dpi=150,
             bbox_inches="tight",
             facecolor="white",
