@@ -10,6 +10,8 @@ signal.signal(signal.SIGINT, signal.SIG_DFL)
 parser = argparse.ArgumentParser()
 parser.add_argument("-hist",  dest="hist_type",  action=argparse.BooleanOptionalAction, help="Plot histogram. Default is scatter plot.")
 parser.add_argument('-histv', dest="histv_type", action=argparse.BooleanOptionalAction, help="Plot histogram with num values on the bars.")
+parser.add_argument('-cumul', dest="cumul", action=argparse.BooleanOptionalAction, help="Plot cumulative graph.")
+parser.add_argument('-cumulog', dest="cumulog", action=argparse.BooleanOptionalAction, help="Plot cumulative graph with logarithmic scaling on the x graph.")
 parser.add_argument('-s', dest="save_plot", action=argparse.BooleanOptionalAction, help="Save plot to file")
 parser.add_argument("-f", dest="file_name", type=str, help="The file to plot")
 parser.add_argument("-x", dest="x_lim", type=int, help="The x limit of the plot")
@@ -17,6 +19,22 @@ parser.add_argument("-y", dest="y_lim", type=int, help="The y limit of the plot"
 args = parser.parse_args()
 
 file_name = args.file_name if args.file_name else "whet1B"
+
+def make_cumul():
+    df = pd.read_csv(f"plot_dependencies/stats/dist_dependencies_{file_name}.csv")
+    df = df.sort_values("delta")
+    df["cum_num"] = df["num"].cumsum()
+    df["cum_pct"] = df["cum_num"] / df["num"].sum() * 100
+    plt.plot(df["delta"], df["cum_pct"])
+    if args.cumulog:
+        plt.xscale("log") 
+    
+    plt.title(f"Cumulative graph for {file_name}")
+    plt.xlabel("Delta (cycles)")
+    plt.ylabel("Cumulative % of instructions")
+    x_lim = args.x_lim if args.x_lim else df["delta"].max()
+    return (x_lim, 100, "cumul")
+
 
 def make_hist():
     df = pd.read_csv(f"plot_dependencies/stats/dist_dependencies_{file_name}.csv")
@@ -45,6 +63,8 @@ def make_hist():
                 )
     
     plt.title(f"Histogram for {file_name}")
+    plt.xlabel("Delta (cycles)")
+    plt.ylabel("Number of instructions")
     return (x_lim, y_lim, "hist")
 
 def make_scatter():
@@ -54,17 +74,19 @@ def make_scatter():
     plt.scatter(delta, num)
     
     plt.title(f"Scatter-plot for {file_name}")
+    plt.xlabel("Delta (cycles)")
+    plt.ylabel("Number of instructions")
     x_lim = args.x_lim if args.x_lim else delta.max()
     y_lim = args.y_lim if args.y_lim else num.max()
     return (x_lim, y_lim, "scatter")
 
 if args.hist_type or args.histv_type:
     x_lim, y_lim, plt_type = make_hist()
+elif args.cumul or args.cumulog:
+    x_lim, y_lim, plt_type = make_cumul()
 else:
     x_lim, y_lim, plt_type = make_scatter()
 
-plt.xlabel("Delta (cycles)")
-plt.ylabel("Number of instructions")
 plt.xlim((-0.5, (x_lim+0.5)))
 plt.ylim((-0.5, y_lim))
 plt.grid(True, linestyle="--", alpha=0.5)
