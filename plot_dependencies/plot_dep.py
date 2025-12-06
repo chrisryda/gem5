@@ -13,11 +13,17 @@ parser.add_argument('-histv', dest="histv_type", action=argparse.BooleanOptional
 parser.add_argument('-s', dest="save_plot", action=argparse.BooleanOptionalAction, help="Save plot to file")
 parser.add_argument("-f", dest="file_name", type=str, help="The file to plot")
 parser.add_argument("-x", dest="x_lim", type=int, help="The x limit of the plot")
+parser.add_argument("-y", dest="y_lim", type=int, help="The y limit of the plot")
 args = parser.parse_args()
 
-def make_hist() -> None:
+file_name = args.file_name if args.file_name else "whet1B"
+
+def make_hist():
+    df = pd.read_csv(f"plot_dependencies/stats/dist_dependencies_{file_name}.csv")
     delta_only = []
-    for d, i in zip(delta, instructions):
+    x_lim = args.x_lim if args.x_lim else df["delta"].max()
+    y_lim = args.y_lim if args.y_lim else df["num"].max()
+    for d, i in zip(df["delta"], df["num"]):
         if d <= x_lim:
             for _ in range(i):
                 delta_only.append(d)
@@ -28,7 +34,7 @@ def make_hist() -> None:
     
     if args.histv_type:
         for count, x in zip(counts, bins):
-            if count != 0:
+            if x < x_lim and count != 0:
                 plt.text(
                     x + (bins[1]-bins[0])/2,  # midpoint of each bin
                     1000,                     # height (where text goes)
@@ -37,26 +43,30 @@ def make_hist() -> None:
                     rotation=90,
                     # fontsize=3
                 )
-    return
+    
+    plt.title(f"Histogram for {file_name}")
+    return (x_lim, y_lim, "hist")
 
-file_name = args.file_name if args.file_name else "whet1B"
-df = pd.read_csv(f"plot_dependencies/stats/dist_dependencies_{file_name}.csv").to_numpy()
-delta = np.array([e[0] for e in df])
-instructions = np.array([e[1] for e in df])
-x_lim = args.x_lim if args.x_lim else delta.max() 
+def make_scatter():
+    df = pd.read_csv(f"plot_dependencies/stats/dist_dependencies_{file_name}.csv").to_numpy()
+    delta = np.array([e[0] for e in df])
+    num = np.array([e[1] for e in df])
+    plt.scatter(delta, num)
+    
+    plt.title(f"Scatter-plot for {file_name}")
+    x_lim = args.x_lim if args.x_lim else delta.max()
+    y_lim = args.y_lim if args.y_lim else num.max()
+    return (x_lim, y_lim, "scatter")
 
 if args.hist_type or args.histv_type:
-    make_hist()
-    plt_type = "hist"
-    plt.title(f"Histogram for {file_name}")
+    x_lim, y_lim, plt_type = make_hist()
 else:
-    plt.scatter(delta, instructions)
-    plt_type = "scatter"
-    plt.title(f"Scatter-plot for {file_name}")
+    x_lim, y_lim, plt_type = make_scatter()
 
 plt.xlabel("Delta (cycles)")
 plt.ylabel("Number of instructions")
 plt.xlim((-0.5, (x_lim+0.5)))
+plt.ylim((-0.5, y_lim))
 plt.grid(True, linestyle="--", alpha=0.5)
 try:
     if args.save_plot:
