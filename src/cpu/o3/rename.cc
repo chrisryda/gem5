@@ -1509,7 +1509,7 @@ Rename::writeDistDependencies()
     {
         std::ofstream csv_file;
         csv_file.open("dist_dependencies_xx100B.csv");
-        csv_file << "cycles,intructions\n";
+        csv_file << "delta,num\n";
         auto dd_it = distDependecies.begin();
         while (dd_it != distDependecies.end())
         {
