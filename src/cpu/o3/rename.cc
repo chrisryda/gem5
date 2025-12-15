@@ -755,7 +755,7 @@ Rename::renameInsts(ThreadID tid)
     stats.renamedInsts += renamed_insts;
     
     // if (curTick() > xx999950000) { writeDistDependencies(); }
-    if (curTick() > 99999950000) { writeDistDependencies(); }
+    if (curTick() > 99999950000) { writeDistDependencies(); } // tick limit
 
     // If we wrote to the time buffer, record this.
     if (toIEWIndex) {
