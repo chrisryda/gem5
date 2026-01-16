@@ -57,14 +57,14 @@ match binary:
         binary_path = "/home/crd/nec/gem5/tests/test-progs/simsim/bin/whetstone"
         args = []
     case "lbm":
-        binary_path = "/home/crd/nec/gem5/tests/test-progs/lbm/program"
-        args = ["64", "reference.dat", "0", "1", "/home/crd/nec/gem5/tests/test-progs/lbm/100_100_130_cf_a.of"]
+        binary_path = "/home/crd/nec/gem5/tests/test-progs/519.lbm_r/src/program"
+        args = ["64", "reference.dat", "0", "1", "/home/crd/nec/gem5/tests/test-progs/519.lbm_r/data/refrate/input/100_100_130_ldc.of"]
     case "mcf":
         binary_path = "/home/crd/nec/gem5/tests/test-progs/505.mcf_r/src/program"
-        args = ["/home/crd/nec/gem5/tests/test-progs/505.mcf_r/data/test/input/inp.in"]
+        args = ["/home/crd/nec/gem5/tests/test-progs/505.mcf_r/data/refspeed/input/inp.in"]
     case "gcc":
         binary_path = "/home/crd/nec/gem5/tests/test-progs/502.gcc_r/src/cpugcc_r"
-        args = ["/home/crd/nec/gem5/tests/test-progs/502.gcc_r/data/refrate/input/gcc-pp.c"]
+        args = ["/home/crd/nec/gem5/tests/test-progs/502.gcc_r/data/refspeed/input/gcc-pp.c"]
 
 board.set_se_binary_workload(binary=BinaryResource(binary_path), arguments=args)
 simulator = Simulator(board=board)

@@ -37,8 +37,8 @@ configs/dram/lowp_sweep.cfg
 typings
 .DS_Store
 dist_dependencies.csv
-tests/test-progs/lbm/
 tests/test-progs/505.mcf_r/
 tests/test-progs/502.gcc_r/
+tests/test-progs/519.lbm_r/
 plot_dependencies/stats/
 plot_dependencies/all_reg_types_stats/
