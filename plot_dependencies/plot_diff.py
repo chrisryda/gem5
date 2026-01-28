@@ -35,15 +35,15 @@ def make_cumul():
     df["cum_pct"] = df["cum_num"] / df["num"].sum() * 100
     df_all["cum_pct"] = df_all["cum_num"] / df_all["num"].sum() * 100
     
-    plt.plot(df["delta"], df["cum_pct"], alpha=1.0)
-    plt.plot(df_all["delta"], df_all["cum_pct"], alpha=1.0, color="orange")
+    plt.plot(df["delta"], df["cum_pct"], alpha=1.0, label=f1_name)
+    plt.plot(df_all["delta"], df_all["cum_pct"], alpha=1.0, color="orange", label=f2_name)
     if args.cumulog:
         plt.xscale("log") 
     
     plt.title(f"[diff] Cumulative graph for {f1_name} and {f2_name}")
     plt.xlabel("Delta (cycles)")
     plt.ylabel("Cumulative % of instructions")
-    plt.legend([f1_name, f2_name], loc="upper left")
+    plt.legend(loc="upper left")
     plt.yticks(np.arange(0, 100+1, 10))
     x_lim = args.x_lim if args.x_lim else df["delta"].max()
     return (x_lim, 100, "cumul")
@@ -72,10 +72,10 @@ def make_hist():
     all_delta_only = np.array(all_delta_only)
     
     all_bins = np.arange(all_delta_only.min(), all_delta_only.max() + 2) - 0.5
-    all_counts, all_bins, _ = plt.hist(all_delta_only, bins=all_bins, color="orange", edgecolor="black", alpha=1.0)
+    all_counts, all_bins, _ = plt.hist(all_delta_only, bins=all_bins, color="orange", edgecolor="black", alpha=1.0, label=f2_name)
     
     bins = np.arange(delta_only.min(), delta_only.max() + 2) - 0.5
-    counts, bins, _ = plt.hist(delta_only, bins=bins, edgecolor="black", alpha=1.0)
+    counts, bins, _ = plt.hist(delta_only, bins=bins, edgecolor="black", alpha=1.0, label=f1_name)
     
     if args.histv_type:
         for count, x, all_count, all_x in zip(counts, bins, all_counts, all_bins):
@@ -96,7 +96,7 @@ def make_hist():
                     )
     
     plt.title(f"[diff] Histogram for {f1_name} and {f2_name}")
-    plt.legend([f1_name, f2_name], loc="upper right")
+    plt.legend(loc="upper right")
     plt.xlabel("Delta (cycles)")
     plt.ylabel("Number of instructions")
     return (x_lim, y_lim, "hist")
