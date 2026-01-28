@@ -13,16 +13,18 @@ parser.add_argument('-histv', dest="histv_type", action=argparse.BooleanOptional
 parser.add_argument('-cumul', dest="cumul", action=argparse.BooleanOptionalAction, help="Plot cumulative graph.")
 parser.add_argument('-cumulog', dest="cumulog", action=argparse.BooleanOptionalAction, help="Plot cumulative graph with logarithmic scaling on the x graph.")
 parser.add_argument('-s', dest="save_plot", action=argparse.BooleanOptionalAction, help="Save plot to file")
-parser.add_argument("-f", dest="file_name", type=str, help="The file to plot")
+parser.add_argument("-f1", dest="f1_name", type=str, help="The first file to plot")
+parser.add_argument("-f2", dest="f2_name", type=str, help="The second file to plot")
 parser.add_argument("-x", dest="x_lim", type=int, help="The x limit of the plot")
 parser.add_argument("-y", dest="y_lim", type=int, help="The y limit of the plot")
 args = parser.parse_args()
 
-file_name = args.file_name if args.file_name else "whet100B"
+f1_name = args.f1_name if args.f1_name else "whet100B"
+f2_name = args.f2_name if args.f2_name else "whet_art100B"
 
 def make_cumul():
-    df = pd.read_csv(f"/home/crd/nec/gem5/plot_dependencies/stats/dist_dependencies_{file_name}.csv")
-    df_all = pd.read_csv(f"/home/crd/nec/gem5/plot_dependencies/all_reg_types_stats/distdep_all_reg_types_{file_name}.csv")
+    df =     pd.read_csv(f"/home/crd/nec/gem5/plot_dependencies/stats/dist_dependencies_{f1_name}.csv")
+    df_all = pd.read_csv(f"/home/crd/nec/gem5/plot_dependencies/stats/dist_dependencies_{f2_name}.csv")
     
     df = df.sort_values("delta")
     df_all = df_all.sort_values("delta")
@@ -33,22 +35,23 @@ def make_cumul():
     df["cum_pct"] = df["cum_num"] / df["num"].sum() * 100
     df_all["cum_pct"] = df_all["cum_num"] / df_all["num"].sum() * 100
     
-    plt.plot(df["delta"], df["cum_pct"], alpha=1.0)
-    plt.plot(df_all["delta"], df_all["cum_pct"], alpha=1.0, color="orange")
+    plt.plot(df["delta"], df["cum_pct"], alpha=1.0, label=f1_name)
+    plt.plot(df_all["delta"], df_all["cum_pct"], alpha=1.0, color="orange", label=f2_name)
     if args.cumulog:
         plt.xscale("log") 
     
-    plt.title(f"[diff] Cumulative graph for {file_name}")
+    plt.title(f"[diff] Cumulative graph for {f1_name} and {f2_name}")
     plt.xlabel("Delta (cycles)")
     plt.ylabel("Cumulative % of instructions")
+    plt.legend(loc="upper left")
     plt.yticks(np.arange(0, 100+1, 10))
     x_lim = args.x_lim if args.x_lim else df["delta"].max()
     return (x_lim, 100, "cumul")
 
 
 def make_hist():
-    df = pd.read_csv(f"/home/crd/nec/gem5/plot_dependencies/stats/dist_dependencies_{file_name}.csv")
-    df_all = pd.read_csv(f"/home/crd/nec/gem5/plot_dependencies/all_reg_types_stats/distdep_all_reg_types_{file_name}.csv")
+    df =     pd.read_csv(f"/home/crd/nec/gem5/plot_dependencies/stats/dist_dependencies_{f1_name}.csv")
+    df_all = pd.read_csv(f"/home/crd/nec/gem5/plot_dependencies/stats/dist_dependencies_{f2_name}.csv")
 
     delta_only = []
     all_delta_only = []
@@ -69,10 +72,10 @@ def make_hist():
     all_delta_only = np.array(all_delta_only)
     
     all_bins = np.arange(all_delta_only.min(), all_delta_only.max() + 2) - 0.5
-    all_counts, all_bins, _ = plt.hist(all_delta_only, bins=all_bins, color="orange", edgecolor="black", alpha=1.0)
+    all_counts, all_bins, _ = plt.hist(all_delta_only, bins=all_bins, color="orange", edgecolor="black", alpha=1.0, label=f2_name)
     
     bins = np.arange(delta_only.min(), delta_only.max() + 2) - 0.5
-    counts, bins, _ = plt.hist(delta_only, bins=bins, edgecolor="black", alpha=1.0)
+    counts, bins, _ = plt.hist(delta_only, bins=bins, edgecolor="black", alpha=1.0, label=f1_name)
     
     if args.histv_type:
         for count, x, all_count, all_x in zip(counts, bins, all_counts, all_bins):
@@ -92,7 +95,8 @@ def make_hist():
                         fontsize=3
                     )
     
-    plt.title(f"[diff] Histogram for {file_name}")
+    plt.title(f"[diff] Histogram for {f1_name} and {f2_name}")
+    plt.legend(loc="upper right")
     plt.xlabel("Delta (cycles)")
     plt.ylabel("Number of instructions")
     return (x_lim, y_lim, "hist")
@@ -116,7 +120,7 @@ plt.grid(True, linestyle="--", alpha=0.5)
 try:
     if args.save_plot:
         plt.savefig(
-            f"/home/crd/Documents/y6s1/project-TDT4501/{plt_type}_all_regs_plots/{file_name}_{plt_type}_all_regs.pdf",
+            f"/home/crd/Documents/y6s1/project-TDT4501/diff_plots/{plt_type}_{f1_name}_{f2_name}.pdf",
             dpi=150,
             bbox_inches="tight",
             facecolor="white",

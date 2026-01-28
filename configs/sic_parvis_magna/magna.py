@@ -56,15 +56,24 @@ match binary:
     case "whetstone":
         binary_path = "/home/crd/nec/gem5/tests/test-progs/simsim/bin/whetstone"
         args = []
-    case "lbm":
-        binary_path = "/home/crd/nec/gem5/tests/test-progs/lbm/program"
-        args = ["64", "reference.dat", "0", "1", "/home/crd/nec/gem5/tests/test-progs/lbm/100_100_130_cf_a.of"]
-    case "mcf":
+    case "lbm_r":
+        binary_path = "/home/crd/nec/gem5/tests/test-progs/519.lbm_r/src/program"
+        args = ["64", "reference.dat", "0", "1", "/home/crd/nec/gem5/tests/test-progs/519.lbm_r/data/refrate/input/100_100_130_ldc.of"]
+    case "lbm_s": #src copied from 519.lbm_r
+        binary_path = "/home/crd/nec/gem5/tests/test-progs/619.lbm_s/src/program"
+        args = ["2000", "reference.dat", "0", "0", "/home/crd/nec/gem5/tests/test-progs/619.lbm_s/data/refspeed/input/200_200_260_ldc.of"]
+    case "mcf_r":
         binary_path = "/home/crd/nec/gem5/tests/test-progs/505.mcf_r/src/program"
-        args = ["/home/crd/nec/gem5/tests/test-progs/505.mcf_r/data/test/input/inp.in"]
-    case "gcc":
+        args = ["/home/crd/nec/gem5/tests/test-progs/505.mcf_r/data/refrate/input/inp.in"]
+    case "mcf_s": # src and data folders copied from 505.mcf_r
+        binary_path = "/home/crd/nec/gem5/tests/test-progs/605.mcf_s/src/program"
+        args = ["/home/crd/nec/gem5/tests/test-progs/605.mcf_s/data/refspeed/input/inp.in"]
+    case "gcc_r":
         binary_path = "/home/crd/nec/gem5/tests/test-progs/502.gcc_r/src/cpugcc_r"
         args = ["/home/crd/nec/gem5/tests/test-progs/502.gcc_r/data/refrate/input/gcc-pp.c"]
+    case "gcc_s": # src and data folders copied from 602.gcc_r
+        binary_path = "/home/crd/nec/gem5/tests/test-progs/602.gcc_s/src/sgcc"
+        args = ["/home/crd/nec/gem5/tests/test-progs/602.gcc_s/data/refspeed/input/gcc-pp.c"]
 
 board.set_se_binary_workload(binary=BinaryResource(binary_path), arguments=args)
 simulator = Simulator(board=board)
