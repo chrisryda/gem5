@@ -1077,52 +1077,47 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
         inst->renameSrcReg(src_idx, renamed_reg);
 
         Tick t = curTick();
-        uint64_t c = uint64_t(cpu->ticksToCycles(t));
-        uint64_t ts, delta;
+        uint64_t curCycle = uint64_t(cpu->ticksToCycles(t));
+        uint64_t delta;
         auto ts_it = tsRegRename.find(src_reg.index()); 
-        if (ts_it != tsRegRename.end()) 
+        if (ts_it != tsRegRename.end() &&
+            renamed_reg->classValue() != RegClassType::MiscRegClass && 
+            renamed_reg->classValue() != RegClassType::InvalidRegClass &&
+            renamed_reg->classValue() != RegClassType::CCRegClass
+        )
         {
-            ts = ts_it->second;
-            delta = c - ts;
+            delta = curCycle - ts_it->second;
+            inst->deltaVec.at(src_idx).dependent = true;
+            inst->deltaVec.at(src_idx).cycleDist = delta;
             
-            if (renamed_reg->classValue() != RegClassType::MiscRegClass && 
-                renamed_reg->classValue() != RegClassType::InvalidRegClass &&
-                renamed_reg->classValue() != RegClassType::CCRegClass
-            )
+            int target = flat_reg;
+            auto hb_it = std::find_if(
+                historyBuffer[tid].begin(), 
+                historyBuffer[tid].end(),
+                [target](const RenameHistory& rh) {
+                    return rh.archReg == target;
+                }
+            );
+            if (hb_it != historyBuffer[tid].end()) 
             {
-                printf("[tid:%d/%d][t:%ld][c:%" PRIu64 "] Lookup of source arch reg %d (%s) returned phys reg %i (%s). It was renamed at %" PRIu64 ", giving delta = %" PRIu64 "\n\n",
-                    tid, (cpu->numThreads - 1), t, c, src_reg.index(), src_reg.className(), renamed_reg->index(), renamed_reg->className(), ts, delta
-                );
-
-                int target = flat_reg;
-                auto hb_it = std::find_if(
-                    historyBuffer[tid].begin(), 
-                    historyBuffer[tid].end(),
-                    [target](const RenameHistory& rh) {
-                        return rh.archReg == target;
-                    }
-                );
-
-                if (hb_it != historyBuffer[tid].end()) 
-                {
-                    inst->deltaVec.at(src_idx).seqNum = hb_it->instSeqNum; 
-                }
-                inst->deltaVec.at(src_idx).dependent = true;
-                inst->deltaVec.at(src_idx).cycleDist = delta;
-
-                
-                printf("[tid:%d/%d][t:%ld][c:%" PRIu64 "] Source arch reg number %d (id: %d) of inst %lu is dependent on inst %ld with distance of c: %ld\n\n",
-                    tid, (cpu->numThreads - 1), t, c, src_idx, src_reg.index(), inst->seqNum, inst->deltaVec.at(src_idx).seqNum, 
-                    inst->deltaVec.at(src_idx).cycleDist 
-                );
-                
-                auto dd_it = distDependecies.find(delta);
-                if (dd_it != distDependecies.end()) {
-                    dd_it->second += 1;
-                } else {
-                    distDependecies.insert({delta, 1});
-                }
+                inst->deltaVec.at(src_idx).seqNum = hb_it->instSeqNum; 
             }
+            
+            auto dd_it = distDependecies.find(delta);
+            if (dd_it != distDependecies.end()) {
+                dd_it->second += 1;
+            } else {
+                distDependecies.insert({delta, 1});
+            }
+            
+            printf("[tid:%d/%d][t:%ld][c:%" PRIu64 "] Lookup of source arch reg %d (%s) returned phys reg %i (%s). It was renamed at %" PRIu64 ", giving delta = %" PRIu64 "\n",
+                tid, (cpu->numThreads - 1), t, curCycle, src_reg.index(), src_reg.className(), renamed_reg->index(), renamed_reg->className(), ts_it->second, delta
+            );
+
+            printf("[tid:%d/%d][t:%ld][c:%" PRIu64 "] Source arch reg number %d (id: %d) of inst %lu is dependent on inst %ld with distance of c: %ld\n\n",
+                tid, (cpu->numThreads - 1), t, curCycle, src_idx, src_reg.index(), inst->seqNum, inst->deltaVec.at(src_idx).seqNum, 
+                inst->deltaVec.at(src_idx).cycleDist 
+            );
         }
 
         // See if the register is ready or not.
@@ -1202,11 +1197,11 @@ Rename::renameDestRegs(const DynInstPtr &inst, ThreadID tid)
         ) 
         {
             Tick t = curTick();
-            uint64_t c = uint64_t(cpu->ticksToCycles(t));
-            tsRegRename.insert_or_assign(dest_reg.index(), c);
+            uint64_t curCycle = uint64_t(cpu->ticksToCycles(t));
+            tsRegRename.insert_or_assign(dest_reg.index(), curCycle);
 
             printf("[tid:%d/%d][t:%ld][c:%" PRIu64 "] Arch dest reg %i (%s) --> phys reg %i (%i) on instr:%lu [%s  ]\n",
-                tid, (cpu->numThreads - 1), t, c, dest_reg.index(), 
+                tid, (cpu->numThreads - 1), t, curCycle, dest_reg.index(), 
                 dest_reg.className(), rename_result.first->index(), rename_result.first->flatIndex(),
                 inst->seqNum, inst->staticInst->disassemble(inst->pcState().instAddr()).c_str()
             );
