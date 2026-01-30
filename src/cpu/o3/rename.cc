@@ -755,6 +755,7 @@ Rename::renameInsts(ThreadID tid)
     stats.renamedInsts += renamed_insts;
     
     // if (curTick() > xx999950000) { writeDistDependencies(); }
+    // if (curTick() > 99999999500) { writeDistDependencies(); } // lbm 100B
     if (curTick() > 99999950000) { writeDistDependencies(); } // tick limit
 
     // If we wrote to the time buffer, record this.
@@ -1091,6 +1092,28 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
             {
                 printf("[tid:%d/%d][t:%ld][c:%" PRIu64 "] Lookup of source arch reg %d (%s) returned phys reg %i (%s). It was renamed at %" PRIu64 ", giving delta = %" PRIu64 "\n\n",
                     tid, (cpu->numThreads - 1), t, c, src_reg.index(), src_reg.className(), renamed_reg->index(), renamed_reg->className(), ts, delta
+                );
+
+                int target = flat_reg;
+                auto hb_it = std::find_if(
+                    historyBuffer[tid].begin(), 
+                    historyBuffer[tid].end(),
+                    [target](const RenameHistory& rh) {
+                        return rh.archReg == target;
+                    }
+                );
+
+                if (hb_it != historyBuffer[tid].end()) 
+                {
+                    inst->deltaVec.at(src_idx).seqNum = hb_it->instSeqNum; 
+                }
+                inst->deltaVec.at(src_idx).dependent = true;
+                inst->deltaVec.at(src_idx).cycleDist = delta;
+
+                
+                printf("[tid:%d/%d][t:%ld][c:%" PRIu64 "] Source arch reg number %d (id: %d) of inst %lu is dependent on inst %ld with distance of c: %ld\n\n",
+                    tid, (cpu->numThreads - 1), t, c, src_idx, src_reg.index(), inst->seqNum, inst->deltaVec.at(src_idx).seqNum, 
+                    inst->deltaVec.at(src_idx).cycleDist 
                 );
                 
                 auto dd_it = distDependecies.find(delta);

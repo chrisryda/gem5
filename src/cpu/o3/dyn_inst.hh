@@ -94,6 +94,17 @@ class DynInst : public ExecContext, public RefCounted
         uint8_t *readySrcIdx;
     };
 
+    /** Dependency-tracking of source registers. 
+     * One Delta-instance is created for every 
+     * source register of the DynInst. 
+     */
+    struct Delta
+    {
+        bool dependent;
+        InstSeqNum seqNum;
+        uint64_t cycleDist;
+    };
+
     static void *operator new(size_t count, Arrays &arrays);
     static void  operator delete(void* ptr);
 
@@ -122,6 +133,9 @@ class DynInst : public ExecContext, public RefCounted
 
     /** The sequence number of the instruction. */
     InstSeqNum seqNum = 0;
+    
+    /** Vector of all Delta-instances for a DynInst. */
+    std::vector<Delta> deltaVec;
 
     /** The StaticInst used by this BaseDynInst. */
     const StaticInstPtr staticInst;
