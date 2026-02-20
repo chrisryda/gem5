@@ -71,7 +71,7 @@ DynInst::DynInst(const Arrays &arrays, const StaticInstPtr &static_inst,
     instFlags[MemAccPredicate] = true;
 
     for (int i = 0; i < numSrcRegs(); i++){
-        deltaVec.push_back({false, 0, 0});
+        deltaVec.push_back({false, -1, -1});
     }
 
 #ifndef NDEBUG

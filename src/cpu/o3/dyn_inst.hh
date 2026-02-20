@@ -101,8 +101,8 @@ class DynInst : public ExecContext, public RefCounted
     struct Delta
     {
         bool dependent;
-        InstSeqNum seqNum;
-        uint64_t cycleDist;
+        int64_t seqNum;
+        int64_t cycleDist;
     };
 
     static void *operator new(size_t count, Arrays &arrays);
@@ -650,6 +650,14 @@ class DynInst : public ExecContext, public RefCounted
             htmUid = -1;
             htmDepth = 0;
         }
+    }
+
+    /** Sets the provided fields for the source register at idx in deltaVec */
+    void setDeltaVec(int idx, bool dep, int64_t seqNum, int64_t cycleDist)
+    {
+        deltaVec.at(idx).dependent = dep;
+        deltaVec.at(idx).seqNum = seqNum;
+        deltaVec.at(idx).cycleDist = cycleDist;
     }
 
     /** Temporarily sets this instruction as a serialize before instruction. */
