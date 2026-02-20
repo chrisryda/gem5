@@ -50,6 +50,7 @@
 #include "debug/Activity.hh"
 #include "debug/O3PipeView.hh"
 #include "debug/Rename.hh"
+#include "debug/Delta.hh"
 #include "params/BaseO3CPU.hh"
 
 namespace gem5
@@ -1087,8 +1088,6 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
         )
         {
             delta = curCycle - ts_it->second;
-            inst->deltaVec.at(src_idx).dependent = true;
-            inst->deltaVec.at(src_idx).cycleDist = delta;
             
             int target = flat_reg;
             auto hb_it = std::find_if(
@@ -1100,7 +1099,7 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
             );
             if (hb_it != historyBuffer[tid].end()) 
             {
-                inst->deltaVec.at(src_idx).seqNum = hb_it->instSeqNum; 
+                inst->setDeltaVec(src_idx, true, hb_it->instSeqNum, delta);
             }
             
             auto dd_it = distDependecies.find(delta);
@@ -1110,13 +1109,9 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
                 distDependecies.insert({delta, 1});
             }
             
-            printf("[tid:%d/%d][t:%ld][c:%" PRIu64 "] Lookup of source arch reg %d (%s) returned phys reg %i (%s). It was renamed at %" PRIu64 ", giving delta = %" PRIu64 "\n",
-                tid, (cpu->numThreads - 1), t, curCycle, src_reg.index(), src_reg.className(), renamed_reg->index(), renamed_reg->className(), ts_it->second, delta
-            );
-
-            printf("[tid:%d/%d][t:%ld][c:%" PRIu64 "] Source arch reg number %d (id: %d) of inst %lu is dependent on inst %ld with distance of c: %ld\n\n",
-                tid, (cpu->numThreads - 1), t, curCycle, src_idx, src_reg.index(), inst->seqNum, inst->deltaVec.at(src_idx).seqNum, 
-                inst->deltaVec.at(src_idx).cycleDist 
+            DPRINTF(Delta, "RDelta: [tid:%d/%d][c:%" PRIu64 "] Lookup source arch r%d (%s) of instr:%ld [%s  ] returned phys p%i (%s). Renamed %" PRIu64 ", delta = %" PRIu64 "\n",
+                tid, (cpu->numThreads - 1), curCycle, src_reg.index(), src_reg.className(), inst->seqNum, inst->staticInst->disassemble(inst->pcState().instAddr()).c_str(),
+                renamed_reg->index(), renamed_reg->className(), ts_it->second, delta
             );
         }
 
@@ -1128,8 +1123,19 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
                     tid, renamed_reg->index(), renamed_reg->flatIndex(),
                     renamed_reg->className());
 
+            DPRINTF(Delta, "RDelta: Phys reg p%i (%s) is ready, no dependency\n\n", renamed_reg->index(), renamed_reg->className());
+
             inst->markSrcRegReady(src_idx);
         } else {
+
+            if (inst->deltaVec.at(src_idx).dependent)
+            {
+                DPRINTF(Delta, "RDelta: [instr: %ld][%s  ] source arch reg %d (id: r%d) depends on instruction %ld for phys reg %d with delta = %ld\n\n",
+                    inst->seqNum, inst->staticInst->disassemble(inst->pcState().instAddr()).c_str(), 
+                    src_idx, src_reg.index(), inst->deltaVec.at(src_idx).seqNum, renamed_reg->index(), inst->deltaVec.at(src_idx).cycleDist
+                );
+            }
+
             DPRINTF(Rename,
                     "[tid:%i] "
                     "Register %d (flat: %d) (%s) is not ready.\n",
@@ -1200,8 +1206,8 @@ Rename::renameDestRegs(const DynInstPtr &inst, ThreadID tid)
             uint64_t curCycle = uint64_t(cpu->ticksToCycles(t));
             tsRegRename.insert_or_assign(dest_reg.index(), curCycle);
 
-            printf("[tid:%d/%d][t:%ld][c:%" PRIu64 "] Arch dest reg %i (%s) --> phys reg %i (%i) on instr:%lu [%s  ]\n",
-                tid, (cpu->numThreads - 1), t, curCycle, dest_reg.index(), 
+            DPRINTF(Delta, "RDelta: [tid:%d/%d][c:%" PRIu64 "] Arch dest r%i (%s) --> phys p%i (%i) on instr:%lu [%s  ]\n\n",
+                tid, (cpu->numThreads - 1), curCycle, dest_reg.index(), 
                 dest_reg.className(), rename_result.first->index(), rename_result.first->flatIndex(),
                 inst->seqNum, inst->staticInst->disassemble(inst->pcState().instAddr()).c_str()
             );
