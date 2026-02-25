@@ -652,12 +652,36 @@ class DynInst : public ExecContext, public RefCounted
         }
     }
 
-    /** Sets the provided fields for the source register at idx in deltaVec */
-    void setDeltaVec(int idx, bool dep, int64_t seqNum, int64_t cycleDist)
+    /** Sets source register idx as dependent with the provided fields */
+    void setDeltaDep(int idx, int64_t seqNum, int64_t cycleDist)
     {
-        deltaVec.at(idx).dependent = dep;
+        deltaVec.at(idx).dependent = true;
         deltaVec.at(idx).seqNum = seqNum;
         deltaVec.at(idx).cycleDist = cycleDist;
+    }
+
+    /** Sets source register idx as non-dependent, but with the provided fields */
+    void setDeltaNonDep(int idx, int64_t seqNum, int64_t cycleDist)
+    {
+        deltaVec.at(idx).dependent = false;
+        deltaVec.at(idx).seqNum = seqNum;
+        deltaVec.at(idx).cycleDist = cycleDist;
+    }
+
+    // TODO: rename?
+    bool isDeltaCandidate()
+    {
+        int dep_regs = 0;
+        int delta = 0;
+        for (Delta d : deltaVec)
+        {
+            if (d.dependent) {
+                dep_regs++;
+                delta = d.cycleDist; 
+            }
+        }
+
+        return (dep_regs == 1 && delta < 2);
     }
 
     /** Temporarily sets this instruction as a serialize before instruction. */

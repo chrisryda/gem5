@@ -1088,20 +1088,6 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
         )
         {
             delta = curCycle - ts_it->second;
-            
-            int target = flat_reg;
-            auto hb_it = std::find_if(
-                historyBuffer[tid].begin(), 
-                historyBuffer[tid].end(),
-                [target](const RenameHistory& rh) {
-                    return rh.archReg == target;
-                }
-            );
-            if (hb_it != historyBuffer[tid].end()) 
-            {
-                inst->setDeltaVec(src_idx, true, hb_it->instSeqNum, delta);
-            }
-            
             auto dd_it = distDependecies.find(delta);
             if (dd_it != distDependecies.end()) {
                 dd_it->second += 1;
@@ -1113,6 +1099,40 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
                 tid, (cpu->numThreads - 1), curCycle, src_reg.index(), src_reg.className(), inst->seqNum, inst->staticInst->disassemble(inst->pcState().instAddr()).c_str(),
                 renamed_reg->index(), renamed_reg->className(), ts_it->second, delta
             );
+
+            int target = flat_reg;
+            auto hb_it = std::find_if(
+                historyBuffer[tid].begin(), 
+                historyBuffer[tid].end(),
+                [target](const RenameHistory& rh) {
+                    return rh.archReg == target;
+                }
+            );
+
+            if (hb_it != historyBuffer[tid].end()) 
+            {
+                if (scoreboard->getReg(renamed_reg))
+                {
+                    inst->setDeltaNonDep(src_idx, hb_it->instSeqNum, delta);
+                    DPRINTF(Delta, "RDelta: Source arch r%d still in history, but phys reg p%i (%s) is ready and no dependency\n\n", 
+                        src_reg.index(), renamed_reg->index(), renamed_reg->className()
+                    );
+                } else {
+                    inst->setDeltaDep(src_idx, hb_it->instSeqNum, delta);
+                    
+                    DPRINTF(Delta, "RDelta: [instr: %ld][%s  ] source arch reg %d (id: r%d) depends on instruction %ld for phys reg %d with delta = %ld\n\n",
+                        inst->seqNum, inst->staticInst->disassemble(inst->pcState().instAddr()).c_str(), 
+                        src_idx, src_reg.index(), inst->deltaVec.at(src_idx).seqNum, renamed_reg->index(), inst->deltaVec.at(src_idx).cycleDist
+                    );
+                } 
+            } else {
+                if (scoreboard->getReg(renamed_reg))
+                {
+                    DPRINTF(Delta, "RDelta: NOT IN HIST, but phys reg p%i (%s) is ready and no dependency\n\n", renamed_reg->index(), renamed_reg->className());
+                } else {
+                    panic("Dependency untracked in Rename::renameSrcRegs()!");
+                }
+            }
         }
 
         // See if the register is ready or not.
@@ -1123,19 +1143,8 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
                     tid, renamed_reg->index(), renamed_reg->flatIndex(),
                     renamed_reg->className());
 
-            DPRINTF(Delta, "RDelta: Phys reg p%i (%s) is ready, no dependency\n\n", renamed_reg->index(), renamed_reg->className());
-
             inst->markSrcRegReady(src_idx);
         } else {
-
-            if (inst->deltaVec.at(src_idx).dependent)
-            {
-                DPRINTF(Delta, "RDelta: [instr: %ld][%s  ] source arch reg %d (id: r%d) depends on instruction %ld for phys reg %d with delta = %ld\n\n",
-                    inst->seqNum, inst->staticInst->disassemble(inst->pcState().instAddr()).c_str(), 
-                    src_idx, src_reg.index(), inst->deltaVec.at(src_idx).seqNum, renamed_reg->index(), inst->deltaVec.at(src_idx).cycleDist
-                );
-            }
-
             DPRINTF(Rename,
                     "[tid:%i] "
                     "Register %d (flat: %d) (%s) is not ready.\n",
