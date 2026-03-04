@@ -668,22 +668,6 @@ class DynInst : public ExecContext, public RefCounted
         deltaVec.at(idx).cycleDist = cycleDist;
     }
 
-    // TODO: rename?
-    bool isDeltaCandidate()
-    {
-        int dep_regs = 0;
-        int delta = 0;
-        for (Delta d : deltaVec)
-        {
-            if (d.dependent) {
-                dep_regs++;
-                delta = d.cycleDist; 
-            }
-        }
-
-        return (dep_regs == 1 && delta < 2);
-    }
-
     /** Temporarily sets this instruction as a serialize before instruction. */
     void setSerializeBefore() { status.set(SerializeBefore); }
 
