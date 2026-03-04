@@ -50,6 +50,7 @@
 #include "debug/Activity.hh"
 #include "debug/O3PipeView.hh"
 #include "debug/Rename.hh"
+#include "debug/Delta.hh"
 #include "params/BaseO3CPU.hh"
 
 namespace gem5
@@ -755,6 +756,7 @@ Rename::renameInsts(ThreadID tid)
     stats.renamedInsts += renamed_insts;
     
     // if (curTick() > xx999950000) { writeDistDependencies(); }
+    // if (curTick() > 99999999500) { writeDistDependencies(); } // lbm 100B
     if (curTick() > 99999950000) { writeDistDependencies(); } // tick limit
 
     // If we wrote to the time buffer, record this.
@@ -1076,28 +1078,59 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
         inst->renameSrcReg(src_idx, renamed_reg);
 
         Tick t = curTick();
-        uint64_t c = uint64_t(cpu->ticksToCycles(t));
-        uint64_t ts, delta;
+        uint64_t curCycle = uint64_t(cpu->ticksToCycles(t));
+        uint64_t delta;
         auto ts_it = tsRegRename.find(src_reg.index()); 
-        if (ts_it != tsRegRename.end()) 
+        if (ts_it != tsRegRename.end() &&
+            renamed_reg->classValue() != RegClassType::MiscRegClass && 
+            renamed_reg->classValue() != RegClassType::InvalidRegClass &&
+            renamed_reg->classValue() != RegClassType::CCRegClass
+        )
         {
-            ts = ts_it->second;
-            delta = c - ts;
+            delta = curCycle - ts_it->second;
+            auto dd_it = distDependecies.find(delta);
+            if (dd_it != distDependecies.end()) {
+                dd_it->second += 1;
+            } else {
+                distDependecies.insert({delta, 1});
+            }
             
-            if (renamed_reg->classValue() != RegClassType::MiscRegClass && 
-                renamed_reg->classValue() != RegClassType::InvalidRegClass &&
-                renamed_reg->classValue() != RegClassType::CCRegClass
-            )
+            DPRINTF(Delta, "RDelta: [tid:%d/%d][c:%" PRIu64 "] Lookup source arch r%d (%s) of instr:%ld [%s  ] returned phys p%i (%s). Renamed %" PRIu64 ", delta = %" PRIu64 "\n",
+                tid, (cpu->numThreads - 1), curCycle, src_reg.index(), src_reg.className(), inst->seqNum, inst->staticInst->disassemble(inst->pcState().instAddr()).c_str(),
+                renamed_reg->index(), renamed_reg->className(), ts_it->second, delta
+            );
+
+            int target = flat_reg;
+            auto hb_it = std::find_if(
+                historyBuffer[tid].begin(), 
+                historyBuffer[tid].end(),
+                [target](const RenameHistory& rh) {
+                    return rh.archReg == target;
+                }
+            );
+
+            if (hb_it != historyBuffer[tid].end()) 
             {
-                printf("[tid:%d/%d][t:%ld][c:%" PRIu64 "] Lookup of source arch reg %d (%s) returned phys reg %i (%s). It was renamed at %" PRIu64 ", giving delta = %" PRIu64 "\n\n",
-                    tid, (cpu->numThreads - 1), t, c, src_reg.index(), src_reg.className(), renamed_reg->index(), renamed_reg->className(), ts, delta
-                );
-                
-                auto dd_it = distDependecies.find(delta);
-                if (dd_it != distDependecies.end()) {
-                    dd_it->second += 1;
+                if (scoreboard->getReg(renamed_reg))
+                {
+                    inst->setDeltaNonDep(src_idx, hb_it->instSeqNum, delta);
+                    DPRINTF(Delta, "RDelta: Source arch r%d still in history, but phys reg p%i (%s) is ready and no dependency\n\n", 
+                        src_reg.index(), renamed_reg->index(), renamed_reg->className()
+                    );
                 } else {
-                    distDependecies.insert({delta, 1});
+                    inst->setDeltaDep(src_idx, hb_it->instSeqNum, delta);
+                    
+                    DPRINTF(Delta, "RDelta: [instr: %ld][%s  ] source arch reg %d (id: r%d) depends on instruction %ld for phys reg %d with delta = %ld\n\n",
+                        inst->seqNum, inst->staticInst->disassemble(inst->pcState().instAddr()).c_str(), 
+                        src_idx, src_reg.index(), inst->deltaVec.at(src_idx).seqNum, renamed_reg->index(), inst->deltaVec.at(src_idx).cycleDist
+                    );
+                } 
+            } else {
+                if (scoreboard->getReg(renamed_reg))
+                {
+                    DPRINTF(Delta, "RDelta: NOT IN HIST, but phys reg p%i (%s) is ready and no dependency\n\n", renamed_reg->index(), renamed_reg->className());
+                } else {
+                    panic("Dependency untracked in Rename::renameSrcRegs()!");
                 }
             }
         }
@@ -1179,11 +1212,11 @@ Rename::renameDestRegs(const DynInstPtr &inst, ThreadID tid)
         ) 
         {
             Tick t = curTick();
-            uint64_t c = uint64_t(cpu->ticksToCycles(t));
-            tsRegRename.insert_or_assign(dest_reg.index(), c);
+            uint64_t curCycle = uint64_t(cpu->ticksToCycles(t));
+            tsRegRename.insert_or_assign(dest_reg.index(), curCycle);
 
-            printf("[tid:%d/%d][t:%ld][c:%" PRIu64 "] Arch dest reg %i (%s) --> phys reg %i (%i) on instr:%lu [%s  ]\n",
-                tid, (cpu->numThreads - 1), t, c, dest_reg.index(), 
+            DPRINTF(Delta, "RDelta: [tid:%d/%d][c:%" PRIu64 "] Arch dest r%i (%s) --> phys p%i (%i) on instr:%lu [%s  ]\n\n",
+                tid, (cpu->numThreads - 1), curCycle, dest_reg.index(), 
                 dest_reg.className(), rename_result.first->index(), rename_result.first->flatIndex(),
                 inst->seqNum, inst->staticInst->disassemble(inst->pcState().instAddr()).c_str()
             );

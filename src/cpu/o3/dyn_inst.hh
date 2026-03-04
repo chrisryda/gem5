@@ -94,6 +94,17 @@ class DynInst : public ExecContext, public RefCounted
         uint8_t *readySrcIdx;
     };
 
+    /** Dependency-tracking of source registers. 
+     * One Delta-instance is created for every 
+     * source register of the DynInst. 
+     */
+    struct Delta
+    {
+        bool dependent;
+        int64_t seqNum;
+        int64_t cycleDist;
+    };
+
     static void *operator new(size_t count, Arrays &arrays);
     static void  operator delete(void* ptr);
 
@@ -122,6 +133,9 @@ class DynInst : public ExecContext, public RefCounted
 
     /** The sequence number of the instruction. */
     InstSeqNum seqNum = 0;
+    
+    /** Vector of all Delta-instances for a DynInst. */
+    std::vector<Delta> deltaVec;
 
     /** The StaticInst used by this BaseDynInst. */
     const StaticInstPtr staticInst;
@@ -636,6 +650,22 @@ class DynInst : public ExecContext, public RefCounted
             htmUid = -1;
             htmDepth = 0;
         }
+    }
+
+    /** Sets source register idx as dependent with the provided fields */
+    void setDeltaDep(int idx, int64_t seqNum, int64_t cycleDist)
+    {
+        deltaVec.at(idx).dependent = true;
+        deltaVec.at(idx).seqNum = seqNum;
+        deltaVec.at(idx).cycleDist = cycleDist;
+    }
+
+    /** Sets source register idx as non-dependent, but with the provided fields */
+    void setDeltaNonDep(int idx, int64_t seqNum, int64_t cycleDist)
+    {
+        deltaVec.at(idx).dependent = false;
+        deltaVec.at(idx).seqNum = seqNum;
+        deltaVec.at(idx).cycleDist = cycleDist;
     }
 
     /** Temporarily sets this instruction as a serialize before instruction. */
