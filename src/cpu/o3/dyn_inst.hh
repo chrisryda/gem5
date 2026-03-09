@@ -158,6 +158,7 @@ class DynInst : public ExecContext, public RefCounted
     enum Status
     {
         IqEntry,                 /// Instruction is in the IQ
+        DeltaIqEntry,            /// Instruction is in the delta IQ
         RobEntry,                /// Instruction is in the ROB
         LsqEntry,                /// Instruction is in the LSQ
         Completed,               /// Instruction has completed
@@ -668,20 +669,48 @@ class DynInst : public ExecContext, public RefCounted
         deltaVec.at(idx).cycleDist = cycleDist;
     }
 
-    // TODO: rename?
-    bool isDeltaCandidate()
+    /** Checks if this instruction is a candidate for delta filtering. */
+    bool isDeltaCand()
     {
         int dep_regs = 0;
-        int delta = 0;
+        int delta_deps = 0;
         for (Delta d : deltaVec)
         {
-            if (d.dependent) {
-                dep_regs++;
-                delta = d.cycleDist; 
+            if (!d.dependent) continue;
+            dep_regs++;
+            if (d.seqNum != -1 && d.cycleDist >= 0 && d.cycleDist < 2)
+            {
+                delta_deps++;
             }
         }
+        return dep_regs == 1 && delta_deps == 1;
+    }
 
-        return (dep_regs == 1 && delta < 2);
+    /** Returns the index of the single dependent source register in deltaVec.
+     */
+    int getDeltaSrcIdx()
+    {
+        if (!isDeltaCand()) 
+        {
+            panic("getDeltaSrcIdx called on non-delta candidate");
+        }
+        
+        for (int i = 0; i < (int) deltaVec.size(); i++) 
+        {
+            if (deltaVec[i].dependent && deltaVec[i].seqNum != -1)
+            {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** Returns the seqNum of the producer instruction
+     *  of the single dependent register in deltaVec.
+     */
+    InstSeqNum getDeltaProdSeqNum()
+    {
+        return (InstSeqNum) deltaVec[getDeltaSrcIdx()].seqNum;
     }
 
     /** Temporarily sets this instruction as a serialize before instruction. */
@@ -846,6 +875,15 @@ class DynInst : public ExecContext, public RefCounted
 
     /** Returns whether or not this instruction has issued. */
     bool isInIQ() const { return status[IqEntry]; }
+
+    /** Sets this instruction as an entry in the delta IQ. */
+    void setInDeltaIQ() { status.set(DeltaIqEntry); }
+    
+    /** Unsets this instruction as a entry the delta IQ. */
+    void clearInDeltaIQ() { status.reset(DeltaIqEntry); }
+
+    /** Returns whether or not this instruction is in the delta IQ */
+    bool isInDeltaIQ() const { return status[DeltaIqEntry]; }
 
     /** Sets this instruction as squashed in the IQ. */
     void setSquashedInIQ() { status.set(SquashedInIQ); status.set(Squashed);}

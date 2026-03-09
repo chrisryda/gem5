@@ -49,6 +49,7 @@
 #include "cpu/o3/fu_pool.hh"
 #include "cpu/o3/limits.hh"
 #include "debug/IQ.hh"
+#include "debug/Delta.hh"
 #include "enums/OpClass.hh"
 #include "params/BaseO3CPU.hh"
 #include "sim/core.hh"
@@ -124,6 +125,18 @@ InstructionQueue::InstructionQueue(CPU *cpu_ptr, IEW *iew_ptr,
         memDepUnit[tid].setIQ(this);
     }
 
+    // Initialize per-thread delta IQ capacity before resetState().
+    for (ThreadID tid = 0; tid < numThreads; tid++)
+    {
+        maxDeltaEntries[tid] = params.numDeltaIQEntries;
+    }
+    for (ThreadID tid = numThreads; tid < MaxThreads; tid++)
+    {
+        maxDeltaEntries[tid] = 0;
+    }
+
+    numDeltaEntries = params.numDeltaIQEntries * numThreads;
+
     resetState();
 
     //Figure out resource sharing policy
@@ -160,6 +173,15 @@ InstructionQueue::InstructionQueue(CPU *cpu_ptr, IEW *iew_ptr,
     for (ThreadID tid = numThreads; tid < MaxThreads; tid++) {
         maxEntries[tid] = 0;
     }
+
+    // Reserve delta IQ slots from the regular capacity.
+    for (ThreadID tid = 0; tid < numThreads; tid++) 
+    {
+        if (maxEntries[tid] > maxDeltaEntries[tid])
+        {
+            maxEntries[tid] -= maxDeltaEntries[tid];
+        }
+    }
 }
 
 InstructionQueue::~InstructionQueue()
@@ -181,6 +203,8 @@ InstructionQueue::IQStats::IQStats(CPU *cpu, const unsigned &total_width)
     : statistics::Group(cpu),
     ADD_STAT(instsAdded, statistics::units::Count::get(),
              "Number of instructions added to the IQ (excludes non-spec)"),
+    ADD_STAT(deltaInstsAdded, statistics::units::Count::get(),
+             "Number of instructions added to the delta IQ"),
     ADD_STAT(nonSpecInstsAdded, statistics::units::Count::get(),
              "Number of non-speculative instructions added to the IQ"),
     ADD_STAT(instsIssued, statistics::units::Count::get(),
@@ -221,6 +245,9 @@ InstructionQueue::IQStats::IQStats(CPU *cpu, const unsigned &total_width)
 {
     instsAdded
         .prereq(instsAdded);
+
+    deltaInstsAdded
+        .prereq(deltaInstsAdded);
 
     nonSpecInstsAdded
         .prereq(nonSpecInstsAdded);
@@ -397,10 +424,15 @@ InstructionQueue::resetState()
     for (ThreadID tid = 0; tid < MaxThreads; tid++) {
         count[tid] = 0;
         instList[tid].clear();
+        deltaCount[tid] = 0;
+        deltaInstList[tid].clear();
     }
 
     // Initialize the number of free IQ entries.
-    freeEntries = numEntries;
+    // Regular slots are reduced by the total delta reservation.
+    freeDeltaEntries = numDeltaEntries;
+    freeEntries = numEntries - numDeltaEntries;
+    deltaWakeupMap.clear();
 
     // Note that in actuality, the registers corresponding to the logical
     // registers start off as ready.  However this doesn't matter for the
@@ -516,6 +548,18 @@ InstructionQueue::numFreeEntries(ThreadID tid)
     return maxEntries[tid] - count[tid];
 }
 
+unsigned
+InstructionQueue::numFreeDeltaEntries()
+{
+    return freeDeltaEntries;
+}
+
+unsigned
+InstructionQueue::numFreeDeltaEntries(ThreadID tid)
+{
+    return maxDeltaEntries[tid] - deltaCount[tid];
+}
+
 // Might want to do something more complex if it knows how many instructions
 // will be issued this cycle.
 bool
@@ -531,7 +575,7 @@ InstructionQueue::isFull()
 bool
 InstructionQueue::isFull(ThreadID tid)
 {
-    if (numFreeEntries(tid) == 0) {
+    if (numFreeEntries(tid) == 0 && numFreeDeltaEntries(tid) == 0) { // not wise, as most insts are not delta. Will attempt to continue, but then fail. Waste time. 
         return(true);
     } else {
         return(false);
@@ -567,23 +611,50 @@ InstructionQueue::insert(const DynInstPtr &new_inst)
     // Make sure the instruction is valid
     assert(new_inst);
 
-    DPRINTF(IQ, "Adding instruction [sn:%llu] PC %s to the IQ.\n",
-            new_inst->seqNum, new_inst->pcState());
+    if (freeDeltaEntries != 0 && new_inst->isDeltaCand()) 
+    {
+        DPRINTF(Delta, "IQDelta: Adding delta inst [sn:%llu] PC %s to the delta IQ.\n",
+            new_inst->seqNum, new_inst->pcState()
+        );
 
-    assert(freeEntries != 0);
+        deltaInstList[new_inst->threadNumber].push_back(new_inst);
 
-    instList[new_inst->threadNumber].push_back(new_inst);
+        --freeDeltaEntries;
 
-    --freeEntries;
+        ++iqStats.deltaInstsAdded;
+        
+        ++deltaCount[new_inst->threadNumber];
+        
+        new_inst->setInIQ();
+        new_inst->setInDeltaIQ(); // set in both?
 
-    new_inst->setInIQ();
+        // Register for direct seqNum-based wakeup.
+        InstSeqNum prod_seq = new_inst->getDeltaProdSeqNum();
+        deltaWakeupMap[prod_seq].push_back(new_inst);
+    } else {
+        DPRINTF(IQ, "Adding instruction [sn:%llu] PC %s to the IQ.\n",
+            new_inst->seqNum, new_inst->pcState()
+        );
+            
+        assert(freeEntries != 0);
+        
+        instList[new_inst->threadNumber].push_back(new_inst);
+        
+        --freeEntries;
+        
+        ++iqStats.instsAdded;
 
-    // Look through its source registers (physical regs), and mark any
-    // dependencies.
-    addToDependents(new_inst);
+        ++count[new_inst->threadNumber];
 
-    // Have this instruction set itself as the producer of its destination
-    // register(s).
+        new_inst->setInIQ();
+
+        // Look through its source registers (physical regs), 
+        // and mark any dependencies.
+        addToDependents(new_inst);
+    }
+
+    // Have this instruction set itself as the producer of its
+    // destination register(s).
     addToProducers(new_inst);
 
     if (new_inst->isMemRef()) {
@@ -591,10 +662,6 @@ InstructionQueue::insert(const DynInstPtr &new_inst)
     } else {
         addIfReady(new_inst);
     }
-
-    ++iqStats.instsAdded;
-
-    count[new_inst->threadNumber]++;
 
     assert(freeEntries == (numEntries - countInsts()));
 }
@@ -800,6 +867,13 @@ InstructionQueue::scheduleReadyInsts()
                 queueOnList[op_class] = false;
             }
 
+            // Free the appropriate slot for woken-then-squashed insts.
+            if (issuing_inst->isInDeltaIQ()) {
+                ++freeDeltaEntries;
+                --deltaCount[issuing_inst->threadNumber];
+                issuing_inst->clearInDeltaIQ();
+            }
+
             listOrder.erase(order_it++);
 
             ++iqStats.squashedInstsIssued;
@@ -894,8 +968,14 @@ InstructionQueue::scheduleReadyInsts()
             if (!issuing_inst->isMemRef()) {
                 // Memory instructions can not be freed from the IQ until they
                 // complete.
-                ++freeEntries;
-                count[tid]--;
+                if (issuing_inst->isInDeltaIQ()) {
+                    ++freeDeltaEntries;
+                    deltaCount[tid]--;
+                    issuing_inst->clearInDeltaIQ();
+                } else {
+                    ++freeEntries;
+                    count[tid]--;
+                }
                 issuing_inst->clearInIQ();
             } else {
                 memDepUnit[tid].issue(issuing_inst);
@@ -999,9 +1079,16 @@ InstructionQueue::wakeDependents(const DynInstPtr &completed_inst)
         DPRINTF(IQ, "Completing mem instruction PC: %s [sn:%llu]\n",
             completed_inst->pcState(), completed_inst->seqNum);
 
-        ++freeEntries;
+        if (completed_inst->isInDeltaIQ()) {
+            deltaInstList[tid].remove(completed_inst);
+            ++freeDeltaEntries;
+            deltaCount[tid]--;
+            completed_inst->clearInDeltaIQ();
+        } else {
+            ++freeEntries;
+            count[tid]--;
+        }
         completed_inst->memOpDone(true);
-        count[tid]--;
     } else if (completed_inst->isReadBarrier() ||
                completed_inst->isWriteBarrier()) {
         // Completes a non mem ref barrier
@@ -1067,6 +1154,42 @@ InstructionQueue::wakeDependents(const DynInstPtr &completed_inst)
         // Mark the scoreboard as having that register ready.
         regScoreboard[dest_reg->flatIndex()] = true;
     }
+
+    DPRINTF(Delta, "IQDelta: Searching deltaWakeupMap for consumers of inst [sn:%llu]\n", completed_inst->seqNum);
+    // Direct delta wakeup that replaces CAM broadcast for delta candidates.
+    auto delta_it = deltaWakeupMap.find(completed_inst->seqNum);
+    if (delta_it != deltaWakeupMap.end()) 
+    {
+        for (DynInstPtr& delta_inst : delta_it->second)
+        {
+            DPRINTF(Delta, "IQDelta: Found delta dependent inst [sn:%llu] in deltaWakeupMap.\n",
+                delta_inst->seqNum
+            );
+            
+            if (!delta_inst->isSquashed()) 
+            {
+                DPRINTF(Delta, "IQDelta: Waking up delta dependent [sn:%llu] PC %s.\n",
+                    delta_inst->seqNum, delta_inst->pcState()
+                );
+
+                delta_inst->markSrcRegReady(delta_inst->getDeltaSrcIdx());
+                addIfReady(delta_inst);
+
+                // Non-memory delta insts leave deltaInstList now.
+                // Their slot is freed when they issue or are squashed
+                // from readyInsts. Memory delta insts stay in
+                // deltaInstList until completion so that doSquash can
+                // still find and free them if squashed post-issue.
+                if (!delta_inst->isMemRef())
+                {
+                    deltaInstList[delta_inst->threadNumber].remove(delta_inst);
+                }
+            }
+            ++dependents;
+        }
+        deltaWakeupMap.erase(delta_it);
+    }
+
     return dependents;
 }
 
@@ -1333,6 +1456,46 @@ InstructionQueue::doSquash(ThreadID tid)
         }
         instList[tid].erase(squash_it--);
         ++iqStats.squashedInstsExamined;
+    }
+
+    // Squash instructions younger than squashedInst in delta IQ and deltaWakeupMap.
+    for (squash_it = deltaInstList[tid].begin(); squash_it != deltaInstList[tid].end();) 
+    {
+        DynInstPtr squashed_inst = *squash_it;
+
+        if (squashed_inst->seqNum <= squashedSeqNum[tid]) {
+            ++squash_it;
+            continue;
+        }
+
+        DPRINTF(IQ, "[tid:%i] Squashing delta IQ inst [sn:%llu]\n", tid, squashed_inst->seqNum);
+
+        // Remove inst from deltaWakeupMap so its producer won't try to wake it up after it has been squashed.
+        InstSeqNum prod_seq = squashed_inst->getDeltaProdSeqNum();
+        auto delta_it = deltaWakeupMap.find(prod_seq);
+        if (delta_it != deltaWakeupMap.end()) {
+            
+            auto& consumers = delta_it->second;
+            consumers.erase(
+                std::remove(consumers.begin(), consumers.end(), squashed_inst),
+                consumers.end()
+            );
+            
+            if (consumers.empty()) 
+            {
+                deltaWakeupMap.erase(delta_it);
+            }
+        }
+
+        // Mark squashed and free resources.
+        squashed_inst->setSquashedInIQ();
+        squashed_inst->setIssued();
+        squashed_inst->setCanCommit();
+        squashed_inst->clearInIQ();
+        squashed_inst->clearInDeltaIQ();
+        ++freeDeltaEntries;
+        --deltaCount[tid];
+        squash_it = deltaInstList[tid].erase(squash_it);
     }
 }
 

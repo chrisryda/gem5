@@ -172,6 +172,12 @@ class InstructionQueue
     /** Returns number of free entries for a thread. */
     unsigned numFreeEntries(ThreadID tid);
 
+    /** Returns total number of free delta IQ entries. */
+    unsigned numFreeDeltaEntries();
+
+    /** Returns number of free delta IQ entries for a thread. */
+    unsigned numFreeDeltaEntries(ThreadID tid);
+
     /** Returns whether or not the IQ is full. */
     bool isFull();
 
@@ -323,6 +329,9 @@ class InstructionQueue
     /** List of all the instructions in the IQ (some of which may be issued). */
     std::list<DynInstPtr> instList[MaxThreads];
 
+    /** Per-thread list of all the instructions in the delta IQ. */
+    std::list<DynInstPtr> deltaInstList[MaxThreads];
+
     /** List of instructions that are ready to be executed. */
     std::list<DynInstPtr> instsToExecute;
 
@@ -407,6 +416,11 @@ class InstructionQueue
 
     DependencyGraph<DynInstPtr> dependGraph;
 
+    /**
+     * Maps producer seqNum to consumer delta instruction, replacing the CAM broadcast.
+     */
+    std::unordered_map<InstSeqNum, std::vector<DynInstPtr>> deltaWakeupMap;
+
     //////////////////////////////////////
     // Various parameters
     //////////////////////////////////////
@@ -431,6 +445,18 @@ class InstructionQueue
 
     /** The number of entries in the instruction queue. */
     unsigned numEntries;
+
+    /** Per-thread count of instructions in the delta IQ. */
+    unsigned deltaCount[MaxThreads];
+
+    /** Max delta IQ entries per thread. */
+    unsigned maxDeltaEntries[MaxThreads];
+
+    /** Number of free delta IQ entries. */
+    unsigned freeDeltaEntries;
+
+    /** Total number of delta IQ entries (sum of maxDeltaEntries). */
+    unsigned numDeltaEntries;
 
     /** The total number of instructions that can be issued in one cycle. */
     unsigned totalWidth;
@@ -488,6 +514,8 @@ class InstructionQueue
         IQStats(CPU *cpu, const unsigned &total_width);
         /** Stat for number of instructions added. */
         statistics::Scalar instsAdded;
+        /** Stat for number of instructions added to delta IQ. */
+        statistics::Scalar deltaInstsAdded;
         /** Stat for number of non-speculative instructions added. */
         statistics::Scalar nonSpecInstsAdded;
 

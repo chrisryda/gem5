@@ -1143,6 +1143,9 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
                     tid, renamed_reg->index(), renamed_reg->flatIndex(),
                     renamed_reg->className());
 
+            // Mark reg as non-dep so isDeltaCand() does not count it.  
+            // Necessary for reg types (e.g. CC) not handled by delta-dep logic above.
+            inst->setDeltaNonDep(src_idx, -1, -1);
             inst->markSrcRegReady(src_idx);
         } else {
             DPRINTF(Rename,
@@ -1151,6 +1154,10 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
                     tid, renamed_reg->index(), renamed_reg->flatIndex(),
                     renamed_reg->className());
         }
+
+        DPRINTF(Delta, "RDelta: Inst [sn:%lli] has %d ready out of %d sources.\n",
+            inst->seqNum, inst->readyRegs+1, inst->numSrcRegs()
+        );
 
         ++stats.lookups;
     }
