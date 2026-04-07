@@ -575,7 +575,7 @@ InstructionQueue::isFull()
 bool
 InstructionQueue::isFull(ThreadID tid)
 {
-    if (numFreeEntries(tid) == 0 && numFreeDeltaEntries(tid) == 0) { // not wise, as most insts are not delta. Will attempt to continue, but then fail. Waste time. 
+    if (numFreeEntries(tid) == 0) { 
         return(true);
     } else {
         return(false);
@@ -611,10 +611,34 @@ InstructionQueue::insert(const DynInstPtr &new_inst)
     // Make sure the instruction is valid
     assert(new_inst);
 
-    if (freeDeltaEntries != 0 && new_inst->isDeltaCand()) 
+    bool use_delta_iq = (freeDeltaEntries != 0) && new_inst->isDeltaCand();
+    if (use_delta_iq) {
+        PhysRegIdPtr d_src_reg = new_inst->renamedSrcIdx(new_inst->getDeltaSrcIdx());
+        if (regScoreboard[d_src_reg->flatIndex()]) 
+        {
+            DPRINTF(Delta,
+                "IQDelta: Producer already done for [sn:%llu], falling back to regular IQ.\n",
+                new_inst->seqNum
+            );
+            use_delta_iq = false;
+        }
+    }
+
+    if (use_delta_iq)
     {
-        DPRINTF(Delta, "IQDelta: Adding delta inst [sn:%llu] PC %s to the delta IQ.\n",
+        DPRINTF(Delta, 
+            "IQDelta: Adding delta inst [sn:%llu] PC %s to the delta IQ.\n",
             new_inst->seqNum, new_inst->pcState()
+        );
+
+        int d_src_idx = new_inst->getDeltaSrcIdx();
+        InstSeqNum prod_seq = new_inst->getDeltaProdSeqNum();
+        PhysRegIdPtr d_src_phys = new_inst->renamedSrcIdx(d_src_idx);
+        DPRINTF(Delta,
+            "IQDelta: Insert [sn:%llu] PC %s srcIdx=%d physReg=%d, waiting for prodSeq=%llu freeDelta=%u\n",
+            new_inst->seqNum, new_inst->pcState(),
+            d_src_idx, d_src_phys->flatIndex(),
+            prod_seq, (freeDeltaEntries - 1)
         );
 
         deltaInstList[new_inst->threadNumber].push_back(new_inst);
@@ -626,10 +650,11 @@ InstructionQueue::insert(const DynInstPtr &new_inst)
         ++deltaCount[new_inst->threadNumber];
         
         new_inst->setInIQ();
-        new_inst->setInDeltaIQ(); // set in both?
+        new_inst->setInDeltaIQ();
 
-        // Register for direct seqNum-based wakeup.
-        InstSeqNum prod_seq = new_inst->getDeltaProdSeqNum();
+        // Sanity check
+        assert(!new_inst->readyToIssue());
+
         deltaWakeupMap[prod_seq].push_back(new_inst);
     } else {
         DPRINTF(IQ, "Adding instruction [sn:%llu] PC %s to the IQ.\n",
@@ -1162,17 +1187,25 @@ InstructionQueue::wakeDependents(const DynInstPtr &completed_inst)
     {
         for (DynInstPtr& delta_inst : delta_it->second)
         {
-            DPRINTF(Delta, "IQDelta: Found delta dependent inst [sn:%llu] in deltaWakeupMap.\n",
+            DPRINTF(Delta,
+                "IQDelta: Found delta dependent inst [sn:%llu] in deltaWakeupMap.\n",
                 delta_inst->seqNum
             );
             
             if (!delta_inst->isSquashed()) 
             {
-                DPRINTF(Delta, "IQDelta: Waking up delta dependent [sn:%llu] PC %s.\n",
+                DPRINTF(Delta,
+                    "IQDelta: Waking up delta dependent [sn:%llu] PC %s.\n",
                     delta_inst->seqNum, delta_inst->pcState()
                 );
 
                 delta_inst->markSrcRegReady(delta_inst->getDeltaSrcIdx());
+                DPRINTF(Delta,
+                    "IQDelta: After wakeup [sn:%llu] readyToIssue=%d isMemRef=%d.\n",
+                    delta_inst->seqNum,
+                    delta_inst->readyToIssue(),
+                    delta_inst->isMemRef()
+                );
                 addIfReady(delta_inst);
 
                 // Non-memory delta insts leave deltaInstList now.

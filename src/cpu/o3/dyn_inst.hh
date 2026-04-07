@@ -686,7 +686,7 @@ class DynInst : public ExecContext, public RefCounted
         return dep_regs == 1 && delta_deps == 1;
     }
 
-    /** Returns the index of the single dependent source register in deltaVec.
+    /** Returns the index in deltaVec of the single dependent source register.
      */
     int getDeltaSrcIdx()
     {

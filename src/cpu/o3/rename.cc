@@ -755,9 +755,10 @@ Rename::renameInsts(ThreadID tid)
     instsInProgress[tid] += renamed_insts;
     stats.renamedInsts += renamed_insts;
     
+    // Preproject stat collection 
     // if (curTick() > xx999950000) { writeDistDependencies(); }
     // if (curTick() > 99999999500) { writeDistDependencies(); } // lbm 100B
-    if (curTick() > 99999950000) { writeDistDependencies(); } // tick limit
+    // if (curTick() > 99999950000) { writeDistDependencies(); } // tick limit
 
     // If we wrote to the time buffer, record this.
     if (toIEWIndex) {
@@ -1080,7 +1081,8 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
         Tick t = curTick();
         uint64_t curCycle = uint64_t(cpu->ticksToCycles(t));
         uint64_t delta;
-        auto ts_it = tsRegRename.find(src_reg.index()); 
+        int ts_key = (static_cast<int>(src_reg.classValue()) << 16) | src_reg.index();
+        auto ts_it = tsRegRename.find(ts_key);
         if (ts_it != tsRegRename.end() &&
             renamed_reg->classValue() != RegClassType::MiscRegClass && 
             renamed_reg->classValue() != RegClassType::InvalidRegClass &&
@@ -1100,7 +1102,7 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
                 renamed_reg->index(), renamed_reg->className(), ts_it->second, delta
             );
 
-            int target = flat_reg;
+            RegId target = flat_reg;
             auto hb_it = std::find_if(
                 historyBuffer[tid].begin(), 
                 historyBuffer[tid].end(),
@@ -1220,7 +1222,11 @@ Rename::renameDestRegs(const DynInstPtr &inst, ThreadID tid)
         {
             Tick t = curTick();
             uint64_t curCycle = uint64_t(cpu->ticksToCycles(t));
-            tsRegRename.insert_or_assign(dest_reg.index(), curCycle);
+            int ts_key = (static_cast<int>(dest_reg.classValue()) << 16) | dest_reg.index();
+            tsRegRename.insert_or_assign(
+                ts_key,
+                curCycle
+            );
 
             DPRINTF(Delta, "RDelta: [tid:%d/%d][c:%" PRIu64 "] Arch dest r%i (%s) --> phys p%i (%i) on instr:%lu [%s  ]\n\n",
                 tid, (cpu->numThreads - 1), curCycle, dest_reg.index(), 
