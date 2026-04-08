@@ -1,4 +1,14 @@
-simr:
+.PHONY: check prepro_simr prepro_sims corr first
+
+check:
+	@echo "Running correctness check (hello_world)..."
+	@./build/ARM/gem5.opt configs/sic_parvis_magna/magna.py -b hello_world -t 1B > corr-test.txt 2>&1
+	@cat corr-test.txt | grep -q "Hello world!" \
+		&& echo "Correctness check passed." \
+		|| (echo "CORRECTNESS CHECK FAILED" >&2; exit 1)
+	@rm corr-test.txt
+
+prepro_simr: check
 	./build/ARM/gem5.opt configs/sic_parvis_magna/magna.py -b whetstone -t 100B 
 	mv dist_dependencies_xx100B.csv dist_dependencies_whet100B.csv
 	./build/ARM/gem5.opt configs/sic_parvis_magna/magna.py -b lbm_r -t 100B
@@ -9,7 +19,7 @@ simr:
 	mv dist_dependencies_xx100B.csv dist_dependencies_lbm_r100B.csv
 	mv dist_dependencies* plot_dependencies/stats
 
-sims:
+prepro_sims: check
 	./build/ARM/gem5.opt configs/sic_parvis_magna/magna.py -b whetstone -t 100B 
 	mv dist_dependencies_xx100B.csv dist_dependencies_whet100B.csv
 	./build/ARM/gem5.opt configs/sic_parvis_magna/magna.py -b lbm_s -t 100B

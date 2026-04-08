@@ -50,6 +50,9 @@ ticks = args.ticks if args.ticks else "1M"
 binary = args.binary if args.binary else "simple_for"
 
 match binary:
+    case "hello_world":
+        binary_path = "/home/crd/nec/gem5/tests/test-progs/hello/bin/arm/linux/hello"
+        args = []
     case "simple_for":
         binary_path = "/home/crd/nec/gem5/tests/test-progs/simsim/bin/simple_for"
         args = []
@@ -75,7 +78,7 @@ match binary:
         binary_path = "/home/crd/nec/gem5/tests/test-progs/602.gcc_s/src/sgcc"
         args = ["/home/crd/nec/gem5/tests/test-progs/602.gcc_s/data/refspeed/input/gcc-pp.c"]
 
-board.set_se_binary_workload(binary=BinaryResource(binary_path), arguments=args)
+board.set_se_binary_workload(binary=BinaryResource(binary_path), arguments=args) # type: ignore[arg-type]  
 simulator = Simulator(board=board)
 print(f"Running bencmark {binary} for {ticks} ticks\n")
 
