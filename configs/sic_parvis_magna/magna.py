@@ -1,15 +1,16 @@
-from sic_parvis import Magna
 import argparse
+from sic_parvis import Magna, MagnaOpus, IceLakeCacheHierarchy
 
 from gem5.isas import ISA
 from gem5.simulate.simulator import Simulator
-from gem5.resources.resource import BinaryResource
+from gem5.resources.resource import BinaryResource, FileResource
 
 from gem5.components.boards.simple_board import SimpleBoard
-from gem5.components.memory import SingleChannelDDR3_1600
-from gem5.components.cachehierarchies.classic.no_cache import NoCache
-from gem5.components.processors.cpu_types import CPUTypes
-from gem5.components.processors.simple_switchable_processor import SimpleSwitchableProcessor
+# from gem5.components.memory import SingleChannelDDR3_1600
+# from gem5.components.cachehierarchies.classic.no_cache import NoCache
+from gem5.components.memory import SingleChannelDDR4_2400
+# from gem5.components.processors.cpu_types import CPUTypes
+# from gem5.components.processors.simple_switchable_processor import SimpleSwitchableProcessor
 
 def get_num_ticks(ticks : str) -> int:
     ticks = ticks.strip().upper()
@@ -21,9 +22,9 @@ def get_num_ticks(ticks : str) -> int:
         return int(ticks)
     raise ValueError(f"Unrecognized format: {ticks}")
 
-processor = Magna()
-memory = SingleChannelDDR3_1600(size="16GiB")
-cache_hierarchy = NoCache()
+processor = MagnaOpus()
+memory = SingleChannelDDR4_2400(size="16GiB")
+cache_hierarchy = IceLakeCacheHierarchy()
     
 # For fast-forwarding, might need it later  
 # processor = SimpleSwitchableProcessor(
@@ -36,7 +37,7 @@ cache_hierarchy = NoCache()
 
 
 board = SimpleBoard(
-    clk_freq="2GHz",
+    clk_freq="3.3GHz",
     processor=processor,
     memory=memory,
     cache_hierarchy=cache_hierarchy,
@@ -48,6 +49,7 @@ parser.add_argument("-b", dest="binary", type=str, help="The benchmark to run")
 args = parser.parse_args()
 ticks = args.ticks if args.ticks else "1M"
 binary = args.binary if args.binary else "simple_for"
+stdin_file = None
 
 match binary:
     case "hello_world":
@@ -77,8 +79,28 @@ match binary:
     case "gcc_s": # src and data folders copied from 602.gcc_r
         binary_path = "/home/crd/nec/gem5/tests/test-progs/602.gcc_s/src/sgcc"
         args = ["/home/crd/nec/gem5/tests/test-progs/602.gcc_s/data/refspeed/input/gcc-pp.c"]
+    case "perlbench_s": # src already present, data in 600.perlbench_s
+        binary_path = "/home/crd/nec/gem5/tests/test-progs/todo-x-compile/speed/600.perlbench_s/src/program"
+        _perldata = "/home/crd/nec/gem5/tests/test-progs/todo-x-compile/speed/600.perlbench_s/data"
+        args = [
+            f"-I{_perldata}/all/input/lib",
+            f"{_perldata}/all/input/splitmail.pl",
+            "6400", "12", "26", "16", "100", "0",
+        ]
+    case "bwaves_s": # src already present, data in 603.bwaves_s
+        binary_path = "/home/crd/nec/gem5/tests/test-progs/todo-x-compile/speed/603.bwaves_s/src/program"
+        _bwdata = "/home/crd/nec/gem5/tests/test-progs/todo-x-compile/speed/603.bwaves_s/data"
+        args = ["bwaves_1"]
+        stdin_file = FileResource(f"{_bwdata}/refspeed/input/bwaves_1.in")
+    case "cactuBSSN_s": # src already present, data in 607.cactuBSSN_s
+        binary_path = "/home/crd/nec/gem5/tests/test-progs/todo-x-compile/speed/607.cactuBSSN_s/src/cactuBSSN_s"
+        _cactudata = "/home/crd/nec/gem5/tests/test-progs/todo-x-compile/speed/607.cactuBSSN_s/data"
+        args = [f"{_cactudata}/refspeed/input/spec_ref.par"]
+    case "omnetpp_s": # src from 520.omnetpp_r, data from rate benchmark
+        binary_path = "/home/crd/nec/gem5/tests/test-progs/todo-x-compile/speed/620.omnetpp_s/src/program"
+        args = ["-c", "General", "-r", "0"]
 
-board.set_se_binary_workload(binary=BinaryResource(binary_path), arguments=args) # type: ignore[arg-type]  
+board.set_se_binary_workload(binary=BinaryResource(binary_path), arguments=args, stdin_file=stdin_file) # type: ignore[arg-type]  
 simulator = Simulator(board=board)
 print(f"Running bencmark {binary} for {ticks} ticks\n")
 
