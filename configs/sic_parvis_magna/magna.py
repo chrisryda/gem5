@@ -1,3 +1,4 @@
+import os
 import argparse
 from sic_parvis import Magna, MagnaOpus, IceLakeCacheHierarchy
 
@@ -51,53 +52,58 @@ ticks = args.ticks if args.ticks else "1M"
 binary = args.binary if args.binary else "simple_for"
 stdin_file = None
 
+home = os.path.expanduser("~")
+test_dir = f"{home}/nec/gem5/tests/test-progs" if "crd" in home else f"{home}/gem5/tests/test-progs"
 match binary:
     case "hello_world":
-        binary_path = "/home/crd/nec/gem5/tests/test-progs/hello/bin/arm/linux/hello"
+        binary_path = f"{test_dir}/hello/bin/arm/linux/hello"
         args = []
     case "simple_for":
-        binary_path = "/home/crd/nec/gem5/tests/test-progs/simsim/bin/simple_for"
+        binary_path = f"{test_dir}/simsim/bin/simple_for"
         args = []
     case "whetstone":
-        binary_path = "/home/crd/nec/gem5/tests/test-progs/simsim/bin/whetstone"
+        binary_path = f"{test_dir}/simsim/bin/whetstone"
         args = []
     case "lbm_r":
-        binary_path = "/home/crd/nec/gem5/tests/test-progs/519.lbm_r/src/program"
-        args = ["64", "reference.dat", "0", "1", "/home/crd/nec/gem5/tests/test-progs/519.lbm_r/data/refrate/input/100_100_130_ldc.of"]
-    case "lbm_s": #src copied from 519.lbm_r
-        binary_path = "/home/crd/nec/gem5/tests/test-progs/619.lbm_s/src/program"
-        args = ["2000", "reference.dat", "0", "0", "/home/crd/nec/gem5/tests/test-progs/619.lbm_s/data/refspeed/input/200_200_260_ldc.of"]
-    case "mcf_r":
-        binary_path = "/home/crd/nec/gem5/tests/test-progs/505.mcf_r/src/program"
-        args = ["/home/crd/nec/gem5/tests/test-progs/505.mcf_r/data/refrate/input/inp.in"]
-    case "mcf_s": # src and data folders copied from 505.mcf_r
-        binary_path = "/home/crd/nec/gem5/tests/test-progs/605.mcf_s/src/program"
-        args = ["/home/crd/nec/gem5/tests/test-progs/605.mcf_s/data/refspeed/input/inp.in"]
-    case "gcc_r":
-        binary_path = "/home/crd/nec/gem5/tests/test-progs/502.gcc_r/src/cpugcc_r"
-        args = ["/home/crd/nec/gem5/tests/test-progs/502.gcc_r/data/refrate/input/gcc-pp.c"]
-    case "gcc_s": # src and data folders copied from 602.gcc_r
-        binary_path = "/home/crd/nec/gem5/tests/test-progs/602.gcc_s/src/sgcc"
-        args = ["/home/crd/nec/gem5/tests/test-progs/602.gcc_s/data/refspeed/input/gcc-pp.c"]
-    case "perlbench_s": # src already present, data in 600.perlbench_s
-        binary_path = "/home/crd/nec/gem5/tests/test-progs/todo-x-compile/speed/600.perlbench_s/src/program"
-        _perldata = "/home/crd/nec/gem5/tests/test-progs/todo-x-compile/speed/600.perlbench_s/data"
+        binary_path = f"{test_dir}/519.lbm_r/src/program"
         args = [
-            f"-I{_perldata}/all/input/lib",
-            f"{_perldata}/all/input/splitmail.pl",
-            "6400", "12", "26", "16", "100", "0",
+            "64", "reference.dat", "0", "1",
+            f"{test_dir}/519.lbm_r/data/refrate/input/100_100_130_ldc.of"
+        ]
+    case "lbm_s": #src copied from 519.lbm_r
+        binary_path = f"{test_dir}/619.lbm_s/src/program"
+        args = [
+            "2000", "reference.dat", "0", "0",
+            f"{test_dir}/619.lbm_s/data/refspeed/input/200_200_260_ldc.of"
+        ]
+    case "mcf_r":
+        binary_path = f"{test_dir}/505.mcf_r/src/program"
+        args = [f"{test_dir}/505.mcf_r/data/refrate/input/inp.in"]
+    case "mcf_s": # src and data folders copied from 505.mcf_r
+        binary_path = f"{test_dir}/605.mcf_s/src/program"
+        args = [f"{test_dir}/605.mcf_s/data/refspeed/input/inp.in"]
+    case "gcc_r":
+        binary_path = f"{test_dir}/502.gcc_r/src/cpugcc_r"
+        args = [f"{test_dir}/502.gcc_r/data/refrate/input/gcc-pp.c"]
+    case "gcc_s": # src and data folders copied from 602.gcc_r
+        binary_path = f"{test_dir}/602.gcc_s/src/sgcc"
+        args = [f"{test_dir}/602.gcc_s/data/refspeed/input/gcc-pp.c"]
+    case "perlbench_s": # src already present, data in 600.perlbench_s
+        binary_path = f"{test_dir}/600.perlbench_s/src/program"
+        args = [
+            f"-I{test_dir}/600.perlbench_s/data/all/input/lib",
+            f"{test_dir}/600.perlbench_s/data/all/input/splitmail.pl", 
+            "6400", "12", "26", "16", "100", "0"
         ]
     case "bwaves_s": # src already present, data in 603.bwaves_s
-        binary_path = "/home/crd/nec/gem5/tests/test-progs/todo-x-compile/speed/603.bwaves_s/src/program"
-        _bwdata = "/home/crd/nec/gem5/tests/test-progs/todo-x-compile/speed/603.bwaves_s/data"
+        binary_path = f"{test_dir}/603.bwaves_s/src/program"
         args = ["bwaves_1"]
-        stdin_file = FileResource(f"{_bwdata}/refspeed/input/bwaves_1.in")
+        stdin_file = FileResource(f"{test_dir}/603.bwaves_s/data/refspeed/input/bwaves_1.in")
     case "cactuBSSN_s": # src already present, data in 607.cactuBSSN_s
-        binary_path = "/home/crd/nec/gem5/tests/test-progs/todo-x-compile/speed/607.cactuBSSN_s/src/cactuBSSN_s"
-        _cactudata = "/home/crd/nec/gem5/tests/test-progs/todo-x-compile/speed/607.cactuBSSN_s/data"
-        args = [f"{_cactudata}/refspeed/input/spec_ref.par"]
+        binary_path = f"{test_dir}/607.cactuBSSN_s/src/cactuBSSN_s"
+        args = [f"{test_dir}/607.cactuBSSN_s/data/refspeed/input/spec_ref.par"]
     case "omnetpp_s": # src from 520.omnetpp_r, data from rate benchmark
-        binary_path = "/home/crd/nec/gem5/tests/test-progs/todo-x-compile/speed/620.omnetpp_s/src/program"
+        binary_path = f"{test_dir}/620.omnetpp_s/src/program"
         args = ["-c", "General", "-r", "0"]
 
 board.set_se_binary_workload(binary=BinaryResource(binary_path), arguments=args, stdin_file=stdin_file) # type: ignore[arg-type]  
