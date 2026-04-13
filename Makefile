@@ -52,7 +52,7 @@ MAGNA := configs/sic_parvis_magna/magna.py
 STATS_GREP := grep -e "simSeconds" -e "simInsts" -e "core.cpi" -e "instsAdded" -e "deltaInstsAdded" -e "iqFullEvents"
 
 define run_first
-	@$(GEM5) --outdir=m5out-$(1) $(MAGNA) -b $(1) -t 1B
+	@$(GEM5) --outdir=m5out-$(1) $(MAGNA) -b $(1) -t 100B
 	@{ echo "---------- Begin Simulation Statistics ----------"; \
 	   echo "$(1) 100B"; \
 	   $(STATS_GREP) m5out-$(1)/stats.txt; \
