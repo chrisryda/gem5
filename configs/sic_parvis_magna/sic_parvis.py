@@ -121,7 +121,7 @@ class Magna(O3CPU):
 class MagnaOpusInternalCore(ArmO3CPU):
     def __init__(self):
         super().__init__()
-        self.fetchWidth = 6   # unspecified in paper -- ??**but likely wider than 5 (decode width) to allow for fetch bubbles**??
+        self.fetchWidth = 6   # unspecified in paper -- ??**but likely wider than 5 (decode width) to allow for fetch bubbles**?? --Claude
         self.decodeWidth = 5
         self.renameWidth = 5  # unspecified in paper 
         self.issueWidth = 8
@@ -134,11 +134,11 @@ class MagnaOpusInternalCore(ArmO3CPU):
         self.LQEntries = 128
         self.SQEntries = 72
 
-        # Ice Lake physical register file sizes (??)
+        # Physical register file sizes unspecified in paper. BaseO3CPU has 256/256
         self.numPhysIntRegs = 280
         self.numPhysFloatRegs = 224
 
-        self.branchPred = MultiperspectivePerceptronTAGE64KB()
+        self.branchPred = MultiperspectivePerceptronTAGE64KB() # unspecified in paper  
 
 
 class MagnaOpusStdCore(BaseCPUCore):
