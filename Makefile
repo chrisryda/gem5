@@ -11,50 +11,38 @@ check:
 		|| (echo "CORRECTNESS CHECK FAILED" >&2; exit 1)
 	@rm corr-test.txt
 
+PREPRO_SIMR_BENCHES := whetstone lbm_r mcf_r gcc_r
+PREPRO_SIMS_BENCHES := whetstone lbm_s mcf_s gcc_s
+
 prepro_simr: check
-	./build/ARM/gem5.opt configs/sic_parvis_magna/magna.py -b whetstone -t 100B
-	mv dist_dependencies_xx100B.csv dist_dependencies_whet100B.csv
-	./build/ARM/gem5.opt configs/sic_parvis_magna/magna.py -b lbm_r -t 100B
-	mv dist_dependencies_xx100B.csv dist_dependencies_lbm_r100B.csv
-	./build/ARM/gem5.opt configs/sic_parvis_magna/magna.py -b mcf_r -t 100B
-	mv dist_dependencies_xx100B.csv dist_dependencies_mcf_r100B.csv
-	./build/ARM/gem5.opt configs/sic_parvis_magna/magna.py -b gcc_r -t 100B
-	mv dist_dependencies_xx100B.csv dist_dependencies_lbm_r100B.csv
+	@for bench in $(PREPRO_SIMR_BENCHES); do \
+		$(GEM5) $(MAGNA) -b $$bench -t 100B; \
+		mv dist_dependencies_xx100B.csv dist_dependencies_$${bench}100B.csv; \
+	done
 	mv dist_dependencies* plot_dependencies/stats
 
 prepro_sims: check
-	./build/ARM/gem5.opt configs/sic_parvis_magna/magna.py -b whetstone -t 100B
-	mv dist_dependencies_xx100B.csv dist_dependencies_whet100B.csv
-	./build/ARM/gem5.opt configs/sic_parvis_magna/magna.py -b lbm_s -t 100B
-	mv dist_dependencies_xx100B.csv dist_dependencies_lbm_s100B.csv
-	./build/ARM/gem5.opt configs/sic_parvis_magna/magna.py -b mcf_s -t 100B
-	mv dist_dependencies_xx100B.csv dist_dependencies_mcf_s100B.csv
-	./build/ARM/gem5.opt configs/sic_parvis_magna/magna.py -b gcc_s -t 100B
-	mv dist_dependencies_xx100B.csv dist_dependencies_gcc_s100B.csv
+	@for bench in $(PREPRO_SIMS_BENCHES); do \
+		$(GEM5) $(MAGNA) -b $$bench -t 100B; \
+		mv dist_dependencies_xx100B.csv dist_dependencies_$${bench}100B.csv; \
+	done
 	mv dist_dependencies* plot_dependencies/stats
 
-BENCHMARKS := whetstone lbm_s mcf_s gcc_s perlbench_s bwaves_s cactuBSSN_s omnetpp_s
-
-first: check
-	@> first.txt
-	@for bench in $(BENCHMARKS); do \
-		./build/ARM/gem5.opt configs/sic_parvis_magna/magna.py --outdir=m5out-$$bench -b $$bench -t 100B; \
-		echo "---------- Begin Simulation Statistics ----------" >> first.txt; \
-		echo "$$bench 100B" >> first.txt; \
-		grep -e "simSeconds" -e "simInsts" -e "core.cpi" -e "instsAdded" -e "deltaInstsAdded" -e "iqFullEvents" m5out-$$bench/stats.txt >> first.txt; \
-		echo -e "---------- End Simulation Statistics ----------\n" >> first.txt; \
-	done
-	@cat first.txt
-
 # Individual targets for parallel execution: make check && make -j4 first-par
+# Pass SIM_LIMIT to control simulation length, e.g.: make first-par SIM_LIMIT="-c 5M"
 GEM5 := ./build/ARM/gem5.opt
 MAGNA := configs/sic_parvis_magna/magna.py
-STATS_GREP := grep -e "simSeconds" -e "simInsts" -e "core.cpi" -e "instsAdded" -e "deltaInstsAdded" -e "iqFullEvents"
+META_STATS_GREP := grep -e "hostSeconds" -e "simSeconds" -e "simTicks" -e "core.numCycles" -e "simInsts"
+STATS_GREP := grep -e "core.cpi" -e "core.ipc" -e "instsAdded" -e "deltaInstsAdded" -e "iqFullEvents"
+SIM_LIMIT ?= -t 100B
 
 define run_first
-	@$(GEM5) --outdir=m5out-$(1) $(MAGNA) -b $(1) -t 100B
+	@$(GEM5) --outdir=m5out-$(1) $(MAGNA) -b $(1) $(SIM_LIMIT)
 	@{ echo "---------- Begin Simulation Statistics ----------"; \
-	   echo "$(1) 100B"; \
+	   echo "$(1) $(SIM_LIMIT)"; \
+	   echo "----------"; \
+	   $(META_STATS_GREP) m5out-$(1)/stats.txt; \
+	   echo; \
 	   $(STATS_GREP) m5out-$(1)/stats.txt; \
 	   echo "---------- End Simulation Statistics ----------"; \
 	   echo; \
@@ -73,33 +61,12 @@ first-mcf:
 first-gcc:
 	$(call run_first,gcc_s)
 
-first-perlbench:
-	$(call run_first,perlbench_s)
-
-first-bwaves:
-	$(call run_first,bwaves_s)
-
-first-cactuBSSN:
-	$(call run_first,cactuBSSN_s)
-
-first-omnetpp:
-	$(call run_first,omnetpp_s)
-
-first-par: first-whetstone first-lbm first-mcf first-gcc \
-           first-perlbench first-bwaves first-cactuBSSN first-omnetpp
-	@cat first-whetstone.txt first-lbm_s.txt first-mcf_s.txt first-gcc_s.txt \
-	     first-perlbench_s.txt first-bwaves_s.txt first-cactuBSSN_s.txt first-omnetpp_s.txt \
-	     > first.txt
+first-par: first-whetstone first-lbm first-mcf first-gcc
+	@cat first-whetstone.txt first-lbm_s.txt first-mcf_s.txt first-gcc_s.txt > first.txt
 	@cat first.txt
 
 # Benchmarks with rebuild: clean all in their Makefiles
-BENCH_SRCDIRS := \
-    tests/test-progs/600.perlbench_s/src \
-    tests/test-progs/603.bwaves_s/src \
-    tests/test-progs/605.mcf_s/src \
-    tests/test-progs/607.cactuBSSN_s/src \
-    tests/test-progs/619.lbm_s/src \
-    tests/test-progs/620.omnetpp_s/src
+BENCH_SRCDIRS := tests/test-progs/605.mcf_s/src tests/test-progs/619.lbm_s/src
 
 # gcc_s uses a raw build script (no proper Makefile), handled separately
 GCC_S_DIR := tests/test-progs/602.gcc_s/src
@@ -117,4 +84,3 @@ rebuild-benchmarks:
 	@rm -f $(GCC_S_DIR)/sgcc
 	@cd $(GCC_S_DIR) && bash simple-build-sgcc-602.sh
 	@echo "All benchmarks rebuilt."
-
