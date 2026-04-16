@@ -85,7 +85,7 @@ match binary:
         args = []
     case "whetstone":
         binary_path = f"{test_dir}/simsim/bin/whetstone"
-        args = []
+        args = ["-c", "10000000000"]
     case "lbm_r":
         binary_path = f"{test_dir}/519.lbm_r/src/program"
         args = [
