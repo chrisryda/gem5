@@ -1,7 +1,7 @@
 .PHONY: check prepro_simr prepro_sims corr first \
         first-whetstone first-lbm first-mcf first-gcc \
         first-perlbench first-bwaves first-cactuBSSN first-omnetpp \
-        first-par rebuild-benchmarks
+        first-par rebuild-benchmarks collect-cpi
 
 check:
 	@echo "Running correctness check (hello_world)..."
@@ -35,18 +35,19 @@ MAGNA := configs/sic_parvis_magna/magna.py
 META_STATS_GREP := grep -e "hostSeconds" -e "simSeconds" -e "simTicks" -e "core.numCycles" -e "simInsts"
 STATS_GREP := grep -e "core.cpi" -e "core.ipc" -e "instsAdded" -e "deltaInstsAdded" -e "iqFullEvents"
 SIM_LIMIT ?= -t 100B
+SIM_TAG = $(shell echo "$(SIM_LIMIT)" | tr -d ' -')
 
 define run_first
-	@$(GEM5) --outdir=m5out-$(1) $(MAGNA) -b $(1) $(SIM_LIMIT)
+	@$(GEM5) --outdir=m5out-$(SIM_TAG)/$(1)-$(SIM_TAG) $(MAGNA) -b $(1) $(SIM_LIMIT)
 	@{ echo "---------- Begin Simulation Statistics ----------"; \
 	   echo "$(1) $(SIM_LIMIT)"; \
 	   echo "----------"; \
-	   $(META_STATS_GREP) m5out-$(1)/stats.txt; \
+	   $(META_STATS_GREP) m5out-$(SIM_TAG)/$(1)-$(SIM_TAG)/stats.txt; \
 	   echo; \
-	   $(STATS_GREP) m5out-$(1)/stats.txt; \
+	   $(STATS_GREP) m5out-$(SIM_TAG)/$(1)-$(SIM_TAG)/stats.txt; \
 	   echo "---------- End Simulation Statistics ----------"; \
 	   echo; \
-	} > first-$(1).txt
+	} > m5out-$(SIM_TAG)/first-$(1)-$(SIM_TAG).txt
 endef
 
 first-whetstone:
@@ -62,8 +63,12 @@ first-gcc:
 	$(call run_first,gcc_s)
 
 first-par: first-whetstone first-lbm first-mcf first-gcc
-	@cat first-whetstone.txt first-lbm_s.txt first-mcf_s.txt first-gcc_s.txt > first.txt
-	@cat first.txt
+	@cat m5out-$(SIM_TAG)/first-whetstone-$(SIM_TAG).txt \
+	     m5out-$(SIM_TAG)/first-lbm_s-$(SIM_TAG).txt \
+	     m5out-$(SIM_TAG)/first-mcf_s-$(SIM_TAG).txt \
+	     m5out-$(SIM_TAG)/first-gcc_s-$(SIM_TAG).txt \
+	     > m5out-$(SIM_TAG)/first-$(SIM_TAG).txt
+	@cat m5out-$(SIM_TAG)/first-$(SIM_TAG).txt
 
 # Benchmarks with rebuild: clean all in their Makefiles
 BENCH_SRCDIRS := tests/test-progs/605.mcf_s/src tests/test-progs/619.lbm_s/src
@@ -84,3 +89,7 @@ rebuild-benchmarks:
 	@rm -f $(GCC_S_DIR)/sgcc
 	@cd $(GCC_S_DIR) && bash simple-build-sgcc-602.sh
 	@echo "All benchmarks rebuilt."
+
+# Collect CPI data from all simulations across different SIM_LIMITs
+collect-cpi:
+	@bash scripts/collect-cpi.sh
