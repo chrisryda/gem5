@@ -4,6 +4,7 @@ import numpy as np
 import argparse
 import signal
 import sys
+import os
 
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 
@@ -18,10 +19,14 @@ parser.add_argument("-x", dest="x_lim", type=int, help="The x limit of the plot"
 parser.add_argument("-y", dest="y_lim", type=int, help="The y limit of the plot")
 args = parser.parse_args()
 
+home = os.path.expanduser("~")
+stats_dir = f"{home}/nec/gem5/plot_dependencies/stats" if "crd" in home else f"{home}/gem5/plot_dependencies/stats"
+save_dir = f"{home}/Documents/y6s2/ma-TDT4900" if "crd" in home else f"{home}/"
+
 file_name = args.file_name if args.file_name else "whet1B"
 
 def make_cumul():
-    df = pd.read_csv(f"/home/crd/nec/gem5/plot_dependencies/stats/dist_dependencies_{file_name}.csv")
+    df = pd.read_csv(f"{stats_dir}/dist_dependencies_{file_name}.csv")
     df = df.sort_values("delta")
     df["cum_num"] = df["num"].cumsum()
     df["cum_pct"] = df["cum_num"] / df["num"].sum() * 100
@@ -38,7 +43,7 @@ def make_cumul():
 
 
 def make_hist():
-    df = pd.read_csv(f"/home/crd/nec/gem5/plot_dependencies/stats/dist_dependencies_{file_name}.csv")
+    df = pd.read_csv(f"{stats_dir}/dist_dependencies_{file_name}.csv")
     delta_only = []
     x_lim = args.x_lim if args.x_lim else df["delta"].max()
     y_lim = args.y_lim if args.y_lim else df["num"].max()
@@ -76,7 +81,7 @@ def make_hist():
     return (x_lim, y_lim, "hist")
 
 def make_scatter():
-    df = pd.read_csv(f"/home/crd/nec/gem5/plot_dependencies/stats/dist_dependencies_{file_name}.csv").to_numpy()
+    df = pd.read_csv(f"{stats_dir}/dist_dependencies_{file_name}.csv").to_numpy()
     delta = np.array([e[0] for e in df])
     num = np.array([e[1] for e in df])
     plt.scatter(delta, num)
@@ -106,7 +111,7 @@ plt.grid(True, linestyle="--", alpha=0.5)
 try:
     if args.save_plot:
         plt.savefig(
-            f"/home/crd/Documents/y6s1/project-TDT4501/{plt_type}_plots/{file_name}_{plt_type}.pdf",
+            f"{save_dir}/{plt_type}_plots/{file_name}_{plt_type}.pdf",
             # f"/home/crd/Documents/y6s1/project-TDT4501/{file_name}_{plt_type}_full.pdf",
             dpi=150,
             bbox_inches="tight",

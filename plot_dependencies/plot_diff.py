@@ -4,6 +4,7 @@ import numpy as np
 import argparse
 import signal
 import sys
+import os
 
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 
@@ -19,12 +20,16 @@ parser.add_argument("-x", dest="x_lim", type=int, help="The x limit of the plot"
 parser.add_argument("-y", dest="y_lim", type=int, help="The y limit of the plot")
 args = parser.parse_args()
 
+home = os.path.expanduser("~")
+stats_dir = f"{home}/nec/gem5/plot_dependencies/stats" if "crd" in home else f"{home}/gem5/plot_dependencies/stats"
+save_dir = f"{home}/Documents/y6s2/ma-TDT4900/diff_plots" if "crd" in home else f"{home}/diff_plots"
+
 f1_name = args.f1_name if args.f1_name else "whet100B"
 f2_name = args.f2_name if args.f2_name else "whet_art100B"
 
 def make_cumul():
-    df =     pd.read_csv(f"/home/crd/nec/gem5/plot_dependencies/stats/dist_dependencies_{f1_name}.csv")
-    df_all = pd.read_csv(f"/home/crd/nec/gem5/plot_dependencies/stats/dist_dependencies_{f2_name}.csv")
+    df =     pd.read_csv(f"{stats_dir}/dist_dependencies_{f1_name}.csv")
+    df_all = pd.read_csv(f"{stats_dir}/dist_dependencies_{f2_name}.csv")
     
     df = df.sort_values("delta")
     df_all = df_all.sort_values("delta")
@@ -50,8 +55,8 @@ def make_cumul():
 
 
 def make_hist():
-    df =     pd.read_csv(f"/home/crd/nec/gem5/plot_dependencies/stats/dist_dependencies_{f1_name}.csv")
-    df_all = pd.read_csv(f"/home/crd/nec/gem5/plot_dependencies/stats/dist_dependencies_{f2_name}.csv")
+    df =     pd.read_csv(f"{stats_dir}/dist_dependencies_{f1_name}.csv")
+    df_all = pd.read_csv(f"{stats_dir}/dist_dependencies_{f2_name}.csv")
 
     delta_only = []
     all_delta_only = []
@@ -120,7 +125,7 @@ plt.grid(True, linestyle="--", alpha=0.5)
 try:
     if args.save_plot:
         plt.savefig(
-            f"/home/crd/Documents/y6s1/project-TDT4501/diff_plots/{plt_type}_{f1_name}_{f2_name}.pdf",
+            f"{save_dir}/{plt_type}_{f1_name}_{f2_name}.pdf",
             dpi=150,
             bbox_inches="tight",
             facecolor="white",
