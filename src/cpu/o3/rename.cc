@@ -43,6 +43,7 @@
 
 #include <list>
 
+#include "base/output.hh"
 #include "cpu/o3/cpu.hh"
 #include "cpu/o3/dyn_inst.hh"
 #include "cpu/o3/limits.hh"
@@ -1090,13 +1091,17 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
         )
         {
             delta = curCycle - ts_it->second;
-            auto dd_it = distDependecies.find(delta);
-            if (dd_it != distDependecies.end()) {
-                dd_it->second += 1;
-            } else {
-                distDependecies.insert({delta, 1});
+
+            if (!scoreboard->getReg(renamed_reg)) 
+            {
+                auto dd_it = distDependecies.find(delta);
+                if (dd_it != distDependecies.end()) {
+                    dd_it->second += 1;
+                } else {
+                    distDependecies.insert({delta, 1});
+                }
             }
-            
+
             DPRINTF(Delta, "RDelta: [tid:%d/%d][c:%" PRIu64 "] Lookup source arch r%d (%s) of instr:%ld [%s  ] returned phys p%i (%s). Renamed %" PRIu64 ", delta = %" PRIu64 "\n",
                 tid, (cpu->numThreads - 1), curCycle, src_reg.index(), src_reg.className(), inst->seqNum, inst->staticInst->disassemble(inst->pcState().instAddr()).c_str(),
                 renamed_reg->index(), renamed_reg->className(), ts_it->second, delta
@@ -1104,29 +1109,29 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
 
             RegId target = flat_reg;
             auto hb_it = std::find_if(
-                historyBuffer[tid].begin(), 
+                historyBuffer[tid].begin(),
                 historyBuffer[tid].end(),
                 [target](const RenameHistory& rh) {
                     return rh.archReg == target;
                 }
             );
 
-            if (hb_it != historyBuffer[tid].end()) 
+            if (hb_it != historyBuffer[tid].end())
             {
                 if (scoreboard->getReg(renamed_reg))
                 {
                     inst->setDeltaNonDep(src_idx, hb_it->instSeqNum, delta);
-                    DPRINTF(Delta, "RDelta: Source arch r%d still in history, but phys reg p%i (%s) is ready and no dependency\n\n", 
+                    DPRINTF(Delta, "RDelta: Source arch r%d still in history, but phys reg p%i (%s) is ready and no dependency\n\n",
                         src_reg.index(), renamed_reg->index(), renamed_reg->className()
                     );
                 } else {
                     inst->setDeltaDep(src_idx, hb_it->instSeqNum, delta);
-                    
+
                     DPRINTF(Delta, "RDelta: [instr: %ld][%s  ] source arch reg %d (id: r%d) depends on instruction %ld for phys reg %d with delta = %ld\n\n",
-                        inst->seqNum, inst->staticInst->disassemble(inst->pcState().instAddr()).c_str(), 
+                        inst->seqNum, inst->staticInst->disassemble(inst->pcState().instAddr()).c_str(),
                         src_idx, src_reg.index(), inst->deltaVec.at(src_idx).seqNum, renamed_reg->index(), inst->deltaVec.at(src_idx).cycleDist
                     );
-                } 
+                }
             } else {
                 if (scoreboard->getReg(renamed_reg))
                 {
@@ -1554,7 +1559,8 @@ Rename::writeDistDependencies()
     if (!distDependecies.empty()) 
     {
         std::ofstream csv_file;
-        csv_file.open("dist_dependencies_xx100B.csv");
+        std::string path = simout.resolve("dist_dependencies.csv");
+        csv_file.open(path);
         csv_file << "delta,num\n";
         auto dd_it = distDependecies.begin();
         while (dd_it != distDependecies.end())
