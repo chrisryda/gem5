@@ -119,18 +119,18 @@ class Magna(O3CPU):
 
 # Ice Lake-like processor (Table 1 from Doppelganger). 
 class MagnaOpusInternalCore(ArmO3CPU):
-    def __init__(self):
+    def __init__(self, iq_size=120, diq_size=40):
         super().__init__()
         self.fetchWidth = 6   # unspecified in paper -- ??**but likely wider than 5 (decode width) to allow for fetch bubbles**?? --Claude
         self.decodeWidth = 5
-        self.renameWidth = 5  # unspecified in paper 
+        self.renameWidth = 5  # unspecified in paper
         self.issueWidth = 8
         self.wbWidth = 8      # unspecified in paper
         self.commitWidth = 8
 
         self.numROBEntries = 352
-        self.numIQEntries = 160
-        self.numDeltaIQEntries = 40
+        self.numIQEntries = iq_size # Doppelganger has 160
+        self.numDeltaIQEntries = diq_size
         self.LQEntries = 128
         self.SQEntries = 72
 
@@ -138,20 +138,20 @@ class MagnaOpusInternalCore(ArmO3CPU):
         self.numPhysIntRegs = 280
         self.numPhysFloatRegs = 224
 
-        self.branchPred = MultiperspectivePerceptronTAGE64KB() # unspecified in paper  
+        self.branchPred = MultiperspectivePerceptronTAGE64KB() # unspecified in paper, but ShadowBinding lists it
 
 
 class MagnaOpusStdCore(BaseCPUCore):
-    def __init__(self):
-        core = MagnaOpusInternalCore()
+    def __init__(self, iq_size=120, diq_size=40):
+        core = MagnaOpusInternalCore(iq_size=iq_size, diq_size=diq_size)
         super().__init__(core, ISA.ARM)
 
 
 class MagnaOpus(BaseCPUProcessor):
     """Single-core Ice Lake-like processor."""
 
-    def __init__(self):
-        super().__init__([MagnaOpusStdCore()])
+    def __init__(self, iq_size=120, diq_size=40):
+        super().__init__([MagnaOpusStdCore(iq_size=iq_size, diq_size=diq_size)])
 
 
 # StridePrefetcher with 1024 entries, 8-way (matching Doppelganger(?))

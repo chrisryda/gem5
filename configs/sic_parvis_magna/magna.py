@@ -38,7 +38,16 @@ def get_num_cycles(cycles: str) -> int:
     ticks_per_cycle = round(1e12 / (CLK_GHZ * 1e9))
     return num * ticks_per_cycle
 
-processor = MagnaOpus()
+parser = argparse.ArgumentParser()
+sim_limit = parser.add_mutually_exclusive_group()
+sim_limit.add_argument("-t", dest="ticks", type=str, help="The amount of ticks to simulate")
+sim_limit.add_argument("-c", dest="cycles", type=str, help="The amount of cycles to simulate")
+parser.add_argument("-b", dest="binary", type=str, help="The benchmark to run")
+parser.add_argument("--iq-size", type=int, default=120, help="Regular IQ entries")
+parser.add_argument("--diq-size", type=int, default=40, help="Delta IQ entries")
+args = parser.parse_args()
+
+processor = MagnaOpus(iq_size=args.iq_size, diq_size=args.diq_size)
 memory = SingleChannelDDR4_2400(size="16GiB")
 cache_hierarchy = IceLakeCacheHierarchy()
 
@@ -57,13 +66,6 @@ board = SimpleBoard(
     memory=memory,
     cache_hierarchy=cache_hierarchy,
 )
-
-parser = argparse.ArgumentParser()
-sim_limit = parser.add_mutually_exclusive_group()
-sim_limit.add_argument("-t", dest="ticks", type=str, help="The amount of ticks to simulate")
-sim_limit.add_argument("-c", dest="cycles", type=str, help="The amount of cycles to simulate")
-parser.add_argument("-b", dest="binary", type=str, help="The benchmark to run")
-args = parser.parse_args()
 
 if args.cycles:
     num_ticks = get_num_cycles(args.cycles)
@@ -108,8 +110,8 @@ match binary:
         binary_path = f"{test_dir}/502.gcc_r/src/cpugcc_r"
         args = [f"{test_dir}/502.gcc_r/data/refrate/input/gcc-pp.c"]
     case "gcc_s": # src and data folders copied from 602.gcc_r
-        binary_path = f"{test_dir}/602.gcc_s/src/sgcc"
-        args = [f"{test_dir}/602.gcc_s/data/refspeed/input/gcc-pp.c"]
+        binary_path = f"{test_dir.removesuffix('/test-progs')}/ma-benchs/602.gcc_s/sgcc"
+        args = [f"{test_dir.removesuffix('/test-progs')}/ma-benchs/602.gcc_s/data/refspeed/input/gcc-pp.c"]
 
 board.set_se_binary_workload(binary=BinaryResource(binary_path), arguments=args)
 simulator = Simulator(board=board)
@@ -119,4 +121,4 @@ print(f"Running benchmark {binary} for {sim_desc}\n")
 # simulator.run()
 simulator.run(num_ticks)
 
-print(f"Ran a total of {simulator.get_current_tick()} simulated ticks")
+print(f"{binary} ran a total of {simulator.get_current_tick()} simulated ticks with IQ = {args.iq_size} and DIQ = {args.diq_size}")
