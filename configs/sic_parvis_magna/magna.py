@@ -81,39 +81,39 @@ test_dir = f"{home}/nec/gem5/tests/test-progs" if "crd" in home else f"{home}/ge
 match binary:
     case "hello_world":
         binary_path = f"{test_dir}/hello/bin/arm/linux/hello"
-        args = []
+        binary_args = []
     case "simple_for":
         binary_path = f"{test_dir}/simsim/bin/simple_for"
-        args = []
+        binary_args = []
     case "whetstone":
         binary_path = f"{test_dir}/simsim/bin/whetstone"
-        args = ["-c", "10000000000"]
+        binary_args = ["-c", "10000000000"]
     case "lbm_r":
         binary_path = f"{test_dir}/519.lbm_r/src/program"
-        args = [
+        binary_args = [
             "64", "reference.dat", "0", "1",
             f"{test_dir}/519.lbm_r/data/refrate/input/100_100_130_ldc.of"
         ]
     case "lbm_s": #src copied from 519.lbm_r
         binary_path = f"{test_dir}/619.lbm_s/src/program"
-        args = [
+        binary_args = [
             "2000", "reference.dat", "0", "0",
             f"{test_dir}/619.lbm_s/data/refspeed/input/200_200_260_ldc.of"
         ]
     case "mcf_r":
         binary_path = f"{test_dir}/505.mcf_r/src/program"
-        args = [f"{test_dir}/505.mcf_r/data/refrate/input/inp.in"]
+        binary_args = [f"{test_dir}/505.mcf_r/data/refrate/input/inp.in"]
     case "mcf_s": # src and data folders copied from 505.mcf_r
         binary_path = f"{test_dir}/605.mcf_s/src/program"
-        args = [f"{test_dir}/605.mcf_s/data/refspeed/input/inp.in"]
+        binary_args = [f"{test_dir}/605.mcf_s/data/refspeed/input/inp.in"]
     case "gcc_r":
         binary_path = f"{test_dir}/502.gcc_r/src/cpugcc_r"
-        args = [f"{test_dir}/502.gcc_r/data/refrate/input/gcc-pp.c"]
+        binary_args = [f"{test_dir}/502.gcc_r/data/refrate/input/gcc-pp.c"]
     case "gcc_s": # src and data folders copied from 602.gcc_r
         binary_path = f"{test_dir.removesuffix('/test-progs')}/ma-benchs/602.gcc_s/sgcc"
-        args = [f"{test_dir.removesuffix('/test-progs')}/ma-benchs/602.gcc_s/data/refspeed/input/gcc-pp.c"]
+        binary_args = [f"{test_dir.removesuffix('/test-progs')}/ma-benchs/602.gcc_s/data/refspeed/input/gcc-pp.c"]
 
-board.set_se_binary_workload(binary=BinaryResource(binary_path), arguments=args)
+board.set_se_binary_workload(binary=BinaryResource(binary_path), arguments=binary_args)
 simulator = Simulator(board=board)
 print(f"Running benchmark {binary} for {sim_desc}\n")
 
