@@ -174,14 +174,6 @@ InstructionQueue::InstructionQueue(CPU *cpu_ptr, IEW *iew_ptr,
         maxEntries[tid] = 0;
     }
 
-    // Reserve delta IQ slots from the regular capacity.
-    for (ThreadID tid = 0; tid < numThreads; tid++) 
-    {
-        if (maxEntries[tid] > maxDeltaEntries[tid])
-        {
-            maxEntries[tid] -= maxDeltaEntries[tid];
-        }
-    }
 }
 
 InstructionQueue::~InstructionQueue()
@@ -429,9 +421,8 @@ InstructionQueue::resetState()
     }
 
     // Initialize the number of free IQ entries.
-    // Regular slots are reduced by the total delta reservation.
     freeDeltaEntries = numDeltaEntries;
-    freeEntries = numEntries - numDeltaEntries;
+    freeEntries = numEntries;
     deltaWakeupMap.clear();
 
     // Note that in actuality, the registers corresponding to the logical
