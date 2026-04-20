@@ -1,0 +1,3 @@
+[submodule "tests/ma-benchs"]
+	path = tests/ma-benchs
+	url = https://github.com/chrisryda/ma-benchs.git
