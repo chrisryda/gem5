@@ -80,7 +80,7 @@ home = os.path.expanduser("~")
 test_dir = f"{home}/nec/gem5/tests/ma-benchs" if "crd" in home else f"{home}/gem5/tests/ma-benchs"
 match binary:
     case "hello_world":
-        binary_path = f"{test_dir}/hello/bin/arm/linux/hello"
+        binary_path = f"{test_dir.removesuffix('/ma-benchs')}/test-progs/hello/bin/arm/linux/hello"
         binary_args = []
     case "whetstone":
         binary_path = f"{test_dir}/whetstone/whetstone"
