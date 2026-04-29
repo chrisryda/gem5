@@ -90,7 +90,7 @@ cache_hierarchy = PrivateL1PrivateL2CacheHierarchy(
 )
 
 # We use a single channel DDR3_1600 memory system
-memory = SingleChannelDDR3_1600(size="32MiB")
+memory = SingleChannelDDR3_1600(size="16GiB")
 
 # We use a simple O3 processor with one core.
 processor = SimpleProcessor(cpu_type=CPUTypes.O3, isa=ISA.ARM, num_cores=1)
@@ -134,10 +134,10 @@ match binary:
 
 board.set_se_binary_workload(binary=BinaryResource(binary_path), arguments=binary_args)
 simulator = Simulator(board=board)
-print(f"Running benchmark {binary} for {sim_desc}\n")
+print(f"Running benchmark {binary} for {sim_desc} with IQ = {args.iq_size}\n")
 
 # simulator.schedule_max_insts(1_000_000_000)
 # simulator.run()
 simulator.run(num_ticks)
 
-print(f"{binary} ran a total of {simulator.get_current_tick()} simulated ticks\n")
+print(f"{binary} ran a total of {simulator.get_current_tick()} simulated ticks with IQ = {args.iq_size}\n")
