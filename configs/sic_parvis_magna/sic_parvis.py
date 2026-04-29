@@ -13,6 +13,7 @@ from m5.objects.BranchPredictor import (
 )
 
 from m5.objects.FuncUnitConfig import *
+from m5.objects.FUPool import DefaultFUPool
 from gem5.utils.override import overrides
 
 from gem5.components.processors.base_cpu_core import BaseCPUCore
@@ -117,7 +118,7 @@ class Magna(O3CPU):
             num_fp_regs=64,
         )
 
-# Ice Lake-like processor (Table 1 from Doppelganger). 
+# Ice Lake-like processor (Table 1 from Doppelganger).
 class MagnaOpusInternalCore(ArmO3CPU):
     def __init__(self, iq_size=120, diq_size=40):
         super().__init__()
@@ -153,6 +154,63 @@ class MagnaOpus(BaseCPUProcessor):
     def __init__(self, iq_size=120, diq_size=40):
         super().__init__([MagnaOpusStdCore(iq_size=iq_size, diq_size=diq_size)])
 
+# Over-provisioned FU pool to remove FUs as bottleneck.
+# DefaultFUPool indices: [0]=IntALU, [1]=IntMultDiv, [2]=FP_ALU, [3]=FP_MultDiv,
+# [4]=ReadPort, [5]=SIMD_Unit, [6]=Matrix_Unit, [7]=PredALU, [8]=WritePort,
+# [9]=RdWrPort, [10]=IprPort
+class MagnaOpusFUPool(DefaultFUPool):
+    FUList = [
+        IntALU(count=8),
+        IntMultDiv(count=2),
+        FP_ALU(count=8),
+        FP_MultDiv(count=2),
+        ReadPort(count=3),
+        SIMD_Unit(count=2),
+        Matrix_Unit(),
+        PredALU(count=2),
+        WritePort(count=0),
+        RdWrPort(),
+        IprPort(),
+    ]
+    
+
+# Over-provisioned processor: all structural parameters maxed out to isolate the IQ as the sole bottleneck.
+class SuperMagnaOpusInternalCore(ArmO3CPU):
+    def __init__(self, iq_size=120, diq_size=40):
+        super().__init__()
+        self.fetchWidth = 20
+        self.decodeWidth = 20
+        self.renameWidth = 20
+        self.dispatchWidth = 20
+        self.issueWidth = 20
+        self.wbWidth = 20
+        self.commitWidth = 20
+
+        self.numROBEntries = 1024
+        self.numIQEntries = iq_size
+        self.numDeltaIQEntries = diq_size
+        self.LQEntries = 1024
+        self.SQEntries = 1024
+
+        self.numPhysIntRegs = 1024
+        self.numPhysFloatRegs = 1024
+
+        self.fuPool = MagnaOpusFUPool()
+        self.branchPred = MultiperspectivePerceptronTAGE64KB()
+
+
+class SuperMagnaOpusStdCore(BaseCPUCore):
+    def __init__(self, iq_size=120, diq_size=40):
+        core = SuperMagnaOpusInternalCore(iq_size=iq_size, diq_size=diq_size)
+        super().__init__(core, ISA.ARM)
+
+
+class SuperMagnaOpus(BaseCPUProcessor):
+    """Single-core over-provisioned processor; IQ and DIQ remain configurable."""
+
+    def __init__(self, iq_size=120, diq_size=40):
+        super().__init__([SuperMagnaOpusStdCore(iq_size=iq_size, diq_size=diq_size)])
+
 
 # StridePrefetcher with 1024 entries, 8-way (matching Doppelganger(?))
 class IceLakeStridePrefetcher(StridePrefetcher):
@@ -166,7 +224,7 @@ class IceLakeStridePrefetcher(StridePrefetcher):
 # L2:   2 MiB,  8-way, 15-cycle roundtrip  (private per core)
 # L3:  16 MiB, 16-way, 40-cycle roundtrip  (shared)
 class IceLakeCacheHierarchy(AbstractClassicCacheHierarchy, AbstractThreeLevelCacheHierarchy):
-    def __init__(self):
+    def __init__(self, zero_lat=False):
         AbstractClassicCacheHierarchy.__init__(self)
         AbstractThreeLevelCacheHierarchy.__init__(
             self,
@@ -179,6 +237,7 @@ class IceLakeCacheHierarchy(AbstractClassicCacheHierarchy, AbstractThreeLevelCac
             l3_size="16MiB",
             l3_assoc=16,
         )
+        self._zero_lat = zero_lat
         membus = SystemXBar(width=64) # main memory bus
         membus.badaddr_responder = BadAddr() # responder for unmapped addresses, instead of hanging the simulation
         membus.default = membus.badaddr_responder.pio # set route for unmapped addresses
@@ -204,11 +263,11 @@ class IceLakeCacheHierarchy(AbstractClassicCacheHierarchy, AbstractThreeLevelCac
             self.membus.mem_side_ports = port
 
         # Shared L3 and its bus
-        self.l3bus = L2XBar()
+        self.l3bus = L2XBar(width=64)
         self.l3cache = Cache(
             size=self._l3_size,
             assoc=self._l3_assoc,
-            tag_latency=39,   # 40-cycle roundtrip
+            tag_latency=1 if self._zero_lat else 39,
             data_latency=1,
             response_latency=1,
             mshrs=32,
@@ -220,12 +279,12 @@ class IceLakeCacheHierarchy(AbstractClassicCacheHierarchy, AbstractThreeLevelCac
 
         # Per-core L1 + L2
         num_cores = board.get_processor().get_num_cores()
-        self.l2buses = [L2XBar() for _ in range(num_cores)]
+        self.l2buses = [L2XBar(width=64) for _ in range(num_cores)]
         self.l2caches = [
             Cache(
                 size=self._l2_size,
                 assoc=self._l2_assoc,
-                tag_latency=14,   # 15-cycle roundtrip
+                tag_latency=1 if self._zero_lat else 14,
                 data_latency=1,
                 response_latency=1,
                 mshrs=20,
@@ -233,24 +292,25 @@ class IceLakeCacheHierarchy(AbstractClassicCacheHierarchy, AbstractThreeLevelCac
             )
             for _ in range(num_cores)
         ]
-        
+
         self.l1icaches = [
             L1ICache(
                 size=self._l1i_size,
                 assoc=self._l1i_assoc,
-                tag_latency=4,    # 5-cycle roundtrip, same as L1D
+                tag_latency=1 if self._zero_lat else 4,
                 data_latency=1,
                 response_latency=1,
                 mshrs=16,
+                PrefetcherCls=NULL,
             )
             for _ in range(num_cores)
         ]
-        
+
         self.l1dcaches = [
             L1DCache(
                 size=self._l1d_size,
                 assoc=self._l1d_assoc,
-                tag_latency=4,    # 5-cycle roundtrip
+                tag_latency=1 if self._zero_lat else 4,
                 data_latency=1,
                 response_latency=1,
                 mshrs=16,
@@ -269,10 +329,9 @@ class IceLakeCacheHierarchy(AbstractClassicCacheHierarchy, AbstractThreeLevelCac
             cpu.connect_icache(self.l1icaches[i].cpu_side)
             cpu.connect_dcache(self.l1dcaches[i].cpu_side)
             
-            #ARM's MMU has a "table walker" that issues page table reads when there's a TLB miss. 
-            # This connects it directly to the memory bus, bypassing the caches — a simplification 
-            # (real hardware walks through caches, but gem5's ARM SE mode doesn't need accurate walker latency).
-            cpu.connect_walker_ports(self.membus.cpu_side_ports, self.membus.cpu_side_ports)
+            # Connect the ARM MMU table walker to the L2 bus so page table walks
+            # go through L2/L3 before hitting DRAM, matching real hardware behavior.
+            cpu.connect_walker_ports(self.l2buses[i].cpu_side_ports, self.l2buses[i].cpu_side_ports)
             
             # Connects the CPU's interrupt controller ports. On ARM in SE mode this is essentially a 
             # no-op placeholder, but the standard library requires it to be called.

@@ -1,17 +1,14 @@
 import os
 import argparse
-from sic_parvis import Magna, MagnaOpus, IceLakeCacheHierarchy
+from sic_parvis import Magna, MagnaOpus, SuperMagnaOpus, IceLakeCacheHierarchy
 
 from gem5.isas import ISA
 from gem5.simulate.simulator import Simulator
-from gem5.resources.resource import BinaryResource, FileResource
+from gem5.resources.resource import BinaryResource
 
 from gem5.components.boards.simple_board import SimpleBoard
-# from gem5.components.memory import SingleChannelDDR3_1600
-# from gem5.components.cachehierarchies.classic.no_cache import NoCache
 from gem5.components.memory import SingleChannelDDR4_2400
-# from gem5.components.processors.cpu_types import CPUTypes
-# from gem5.components.processors.simple_switchable_processor import SimpleSwitchableProcessor
+from gem5.components.memory.simple import SingleChannelSimpleMemory
 
 CLK_GHZ = 3.3
 
@@ -45,20 +42,21 @@ sim_limit.add_argument("-c", dest="cycles", type=str, help="The amount of cycles
 parser.add_argument("-b", dest="binary", type=str, help="The benchmark to run")
 parser.add_argument("--iq-size", type=int, default=120, help="Regular IQ entries")
 parser.add_argument("--diq-size", type=int, default=40, help="Delta IQ entries")
+parser.add_argument("--zero-lat", action="store_true", default=False, help="Use 1-cycle cache latencies and near-zero DRAM latency to isolate IQ bottleneck")
+parser.add_argument("--super", dest="super_mode", action="store_true", default=False, help="Use over-provisioned processor (wide pipeline, large ROB/LSQ/regfile) to isolate IQ as bottleneck")
 args = parser.parse_args()
 
-processor = MagnaOpus(iq_size=args.iq_size, diq_size=args.diq_size)
-memory = SingleChannelDDR4_2400(size="16GiB")
-cache_hierarchy = IceLakeCacheHierarchy()
-
-# For fast-forwarding, might need it later
-# processor = SimpleSwitchableProcessor(
-#     starting_core_type=CPUTypes.ATOMIC,
-#     switch_core_type=CPUTypes.O3,
-#     isa=ISA.ARM,
-#     num_cores=1,
-# )
-# simulator.run(x) // processor.switch() // simulator.run(y)
+if args.super_mode:
+    processor = SuperMagnaOpus(iq_size=args.iq_size, diq_size=args.diq_size)
+    proc_name = "Super MO"
+else:
+    processor = MagnaOpus(iq_size=args.iq_size, diq_size=args.diq_size)
+    proc_name = "MagnaOpus"
+if args.zero_lat:
+    memory = SingleChannelSimpleMemory(latency="1ns", latency_var="0ns", bandwidth="1TiB/s", size="16GiB")
+else:
+    memory = SingleChannelDDR4_2400(size="16GiB")
+cache_hierarchy = IceLakeCacheHierarchy(zero_lat=args.zero_lat)
 
 board = SimpleBoard(
     clk_freq=f"{CLK_GHZ}GHz",
@@ -97,10 +95,10 @@ match binary:
 
 board.set_se_binary_workload(binary=BinaryResource(binary_path), arguments=binary_args)
 simulator = Simulator(board=board)
-print(f"Running benchmark {binary} for {sim_desc} with IQ = {args.iq_size} and DIQ = {args.diq_size}\n")
+print(f"Running benchmark {binary} for {sim_desc} with {proc_name}, IQ = {args.iq_size} and DIQ = {args.diq_size}\n")
 
 # simulator.schedule_max_insts(1_000_000_000)
 # simulator.run()
 simulator.run(num_ticks)
 
-print(f"{binary} ran a total of {simulator.get_current_tick()} simulated ticks with IQ = {args.iq_size} and DIQ = {args.diq_size}")
+print(f"{binary} ran a total of {simulator.get_current_tick()} simulated ticks on {proc_name} with IQ = {args.iq_size} and DIQ = {args.diq_size}")
