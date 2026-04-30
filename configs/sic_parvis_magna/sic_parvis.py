@@ -18,6 +18,11 @@ from gem5.utils.override import overrides
 
 from gem5.components.processors.base_cpu_core import BaseCPUCore
 from gem5.components.processors.base_cpu_processor import BaseCPUProcessor
+from gem5.components.processors.switchable_processor import SwitchableProcessor
+from gem5.components.processors.simple_core import SimpleCore
+from gem5.components.processors.cpu_types import CPUTypes
+from gem5.components.processors.abstract_processor import AbstractProcessor
+from gem5.components.boards.mem_mode import MemMode
 from gem5.isas import ISA
 
 from gem5.components.cachehierarchies.classic.caches.l1dcache import L1DCache
@@ -158,7 +163,7 @@ class MagnaOpus(BaseCPUProcessor):
 # DefaultFUPool indices: [0]=IntALU, [1]=IntMultDiv, [2]=FP_ALU, [3]=FP_MultDiv,
 # [4]=ReadPort, [5]=SIMD_Unit, [6]=Matrix_Unit, [7]=PredALU, [8]=WritePort,
 # [9]=RdWrPort, [10]=IprPort
-class MagnaOpusFUPool(DefaultFUPool):
+class SuperMagnaOpusFUPool(DefaultFUPool):
     FUList = [
         IntALU(count=8),
         IntMultDiv(count=2),
@@ -178,13 +183,13 @@ class MagnaOpusFUPool(DefaultFUPool):
 class SuperMagnaOpusInternalCore(ArmO3CPU):
     def __init__(self, iq_size=120, diq_size=40):
         super().__init__()
-        self.fetchWidth = 20
-        self.decodeWidth = 20
-        self.renameWidth = 20
-        self.dispatchWidth = 20
-        self.issueWidth = 20
-        self.wbWidth = 20
-        self.commitWidth = 20
+        self.fetchWidth = 10
+        self.decodeWidth = 10
+        self.renameWidth = 10
+        self.dispatchWidth = 10
+        self.issueWidth = 12
+        self.wbWidth = 12
+        self.commitWidth = 12
 
         self.numROBEntries = 1024
         self.numIQEntries = iq_size
@@ -195,7 +200,7 @@ class SuperMagnaOpusInternalCore(ArmO3CPU):
         self.numPhysIntRegs = 1024
         self.numPhysFloatRegs = 1024
 
-        self.fuPool = MagnaOpusFUPool()
+        self.fuPool = SuperMagnaOpusFUPool()
         self.branchPred = MultiperspectivePerceptronTAGE64KB()
 
 
@@ -210,6 +215,92 @@ class SuperMagnaOpus(BaseCPUProcessor):
 
     def __init__(self, iq_size=120, diq_size=40):
         super().__init__([SuperMagnaOpusStdCore(iq_size=iq_size, diq_size=diq_size)])
+
+
+class MagnaOpusSwitchableProcessor(SwitchableProcessor):
+    """
+    Starts in ATOMIC mode for fast cache/TLB warmup, then switches to the
+    full MagnaOpus O3 core for timing measurement.
+    """
+
+    def __init__(self, iq_size=120, diq_size=40):
+        self._start_key = "start"
+        self._switch_key = "switch"
+        self._current_is_start = True
+
+        atomic_core = SimpleCore(cpu_type=CPUTypes.ATOMIC, core_id=0, isa=ISA.ARM)
+        o3_core = MagnaOpusStdCore(
+            iq_size=iq_size,
+            diq_size=diq_size,
+        )
+        # cpu_id must match on both sides of the switch or gem5 asserts
+        o3_core.get_simobject().cpu_id = atomic_core.get_simobject().cpu_id
+
+        super().__init__(
+            switchable_cores={
+                self._start_key: [atomic_core],
+                self._switch_key: [o3_core],
+            },
+            starting_cores=self._start_key,
+        )
+
+    @overrides(SwitchableProcessor)
+    def incorporate_processor(self, board):
+        super().incorporate_processor(board=board)
+        board.set_mem_mode(MemMode.ATOMIC)
+
+    @overrides(AbstractProcessor)
+    def switch(self):
+        if self._current_is_start:
+            self._board.set_mem_mode(MemMode.TIMING)
+            self.switch_to_processor(self._switch_key)
+        else:
+            self._board.set_mem_mode(MemMode.ATOMIC)
+            self.switch_to_processor(self._start_key)
+        self._current_is_start = not self._current_is_start
+
+
+class SuperMagnaOpusSwitchableProcessor(SwitchableProcessor):
+    """
+    Starts in ATOMIC mode for fast cache/TLB warmup, then switches to the
+    full MagnaOpus O3 core for timing measurement.
+    """
+
+    def __init__(self, iq_size=120, diq_size=40):
+        self._start_key = "start"
+        self._switch_key = "switch"
+        self._current_is_start = True
+
+        atomic_core = SimpleCore(cpu_type=CPUTypes.ATOMIC, core_id=0, isa=ISA.ARM)
+        o3_core = SuperMagnaOpusStdCore(
+            iq_size=iq_size,
+            diq_size=diq_size,
+        )
+        # cpu_id must match on both sides of the switch or gem5 asserts
+        o3_core.get_simobject().cpu_id = atomic_core.get_simobject().cpu_id
+
+        super().__init__(
+            switchable_cores={
+                self._start_key: [atomic_core],
+                self._switch_key: [o3_core],
+            },
+            starting_cores=self._start_key,
+        )
+
+    @overrides(SwitchableProcessor)
+    def incorporate_processor(self, board):
+        super().incorporate_processor(board=board)
+        board.set_mem_mode(MemMode.ATOMIC)
+
+    @overrides(AbstractProcessor)
+    def switch(self):
+        if self._current_is_start:
+            self._board.set_mem_mode(MemMode.TIMING)
+            self.switch_to_processor(self._switch_key)
+        else:
+            self._board.set_mem_mode(MemMode.ATOMIC)
+            self.switch_to_processor(self._start_key)
+        self._current_is_start = not self._current_is_start
 
 
 # StridePrefetcher with 1024 entries, 8-way (matching Doppelganger(?))

@@ -1,7 +1,8 @@
 import os
 import argparse
-from sic_parvis import Magna, MagnaOpus, SuperMagnaOpus, IceLakeCacheHierarchy
+from sic_parvis import Magna, MagnaOpus, SuperMagnaOpus, MagnaOpusSwitchableProcessor, SuperMagnaOpusSwitchableProcessor, IceLakeCacheHierarchy
 
+import m5
 from gem5.isas import ISA
 from gem5.simulate.simulator import Simulator
 from gem5.resources.resource import BinaryResource
@@ -35,23 +36,44 @@ def get_num_cycles(cycles: str) -> int:
     ticks_per_cycle = round(1e12 / (CLK_GHZ * 1e9))
     return num * ticks_per_cycle
 
+def get_num_insts(insts: str) -> int:
+    insts = insts.strip().upper()
+    if insts.endswith("M"):
+        return int(float(insts[:-1]) * 1_000_000)
+    if insts.endswith("B"):
+        return int(float(insts[:-1]) * 1_000_000_000)
+    if insts.isdigit():
+        return int(insts)
+    raise ValueError(f"Unrecognized format: {insts}")
+
 parser = argparse.ArgumentParser()
 sim_limit = parser.add_mutually_exclusive_group()
 sim_limit.add_argument("-t", dest="ticks", type=str, help="The amount of ticks to simulate")
 sim_limit.add_argument("-c", dest="cycles", type=str, help="The amount of cycles to simulate")
 parser.add_argument("-b", dest="binary", type=str, help="The benchmark to run")
+parser.add_argument("--warmup-insts", type=str, default="0", help="Instructions to fast-forward in ATOMIC mode before timing measurement (e.g. 100M, 1B)")
 parser.add_argument("--iq-size", type=int, default=120, help="Regular IQ entries")
 parser.add_argument("--diq-size", type=int, default=40, help="Delta IQ entries")
 parser.add_argument("--zero-lat", action="store_true", default=False, help="Use 1-cycle cache latencies and near-zero DRAM latency to isolate IQ bottleneck")
 parser.add_argument("--super", dest="super_mode", action="store_true", default=False, help="Use over-provisioned processor (wide pipeline, large ROB/LSQ/regfile) to isolate IQ as bottleneck")
 args = parser.parse_args()
+warmup_insts = get_num_insts(args.warmup_insts)
 
-if args.super_mode:
-    processor = SuperMagnaOpus(iq_size=args.iq_size, diq_size=args.diq_size)
-    proc_name = "Super MO"
+if warmup_insts > 0:
+    if args.super_mode:
+        processor = SuperMagnaOpusSwitchableProcessor(iq_size=args.iq_size, diq_size=args.diq_size)
+        proc_name = "Switch Super MO"
+    else:
+        processor = MagnaOpusSwitchableProcessor(iq_size=args.iq_size, diq_size=args.diq_size)
+        proc_name = "Switch MagnaOpus"
 else:
-    processor = MagnaOpus(iq_size=args.iq_size, diq_size=args.diq_size)
-    proc_name = "MagnaOpus"
+    if args.super_mode:
+        processor = SuperMagnaOpus(iq_size=args.iq_size, diq_size=args.diq_size)
+        proc_name = "Super MO"
+    else:
+        processor = MagnaOpus(iq_size=args.iq_size, diq_size=args.diq_size)
+        proc_name = "MagnaOpus"
+
 if args.zero_lat:
     memory = SingleChannelSimpleMemory(latency="1ns", latency_var="0ns", bandwidth="1TiB/s", size="16GiB")
 else:
@@ -97,8 +119,15 @@ board.set_se_binary_workload(binary=BinaryResource(binary_path), arguments=binar
 simulator = Simulator(board=board)
 print(f"Running benchmark {binary} for {sim_desc} with {proc_name}, IQ = {args.iq_size} and DIQ = {args.diq_size}\n")
 
-# simulator.schedule_max_insts(1_000_000_000)
-# simulator.run()
-simulator.run(num_ticks)
+if warmup_insts > 0:
+    print(f"\nFast-forwarding {warmup_insts:,} instructions in ATOMIC mode...\n\n")
+    simulator.schedule_max_insts(warmup_insts)
+    simulator.run()
+    m5.stats.reset()
+    simulator.switch_processor()
+    print(f"\nWarmup done after {simulator.get_current_tick()} simulated ticks. Switched CPU, starting measurements...\n\n")
+    simulator.run(num_ticks)
+else:
+    simulator.run(num_ticks)
 
 print(f"{binary} ran a total of {simulator.get_current_tick()} simulated ticks on {proc_name} with IQ = {args.iq_size} and DIQ = {args.diq_size}")
