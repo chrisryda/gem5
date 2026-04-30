@@ -77,6 +77,7 @@ sim_limit.add_argument("-t", dest="ticks", type=str, help="The amount of ticks t
 sim_limit.add_argument("-c", dest="cycles", type=str, help="The amount of cycles to simulate")
 parser.add_argument("-b", dest="binary", type=str, help="The benchmark to run")
 parser.add_argument("--iq-size", type=int, default=64, help="Number of IQ entries")
+parser.add_argument("--diq-size", type=int, default=0, help="Number of Delta IQ entries")
 args = parser.parse_args()
 
 # This check ensures the gem5 binary contains the ARM ISA target. If not, an
@@ -95,6 +96,7 @@ memory = SingleChannelDDR3_1600(size="16GiB")
 # We use a simple O3 processor with one core.
 processor = SimpleProcessor(cpu_type=CPUTypes.O3, isa=ISA.ARM, num_cores=1)
 processor.get_cores()[0].get_simobject().numIQEntries = args.iq_size
+processor.get_cores()[0].get_simobject().numDeltaIQEntries = args.diq_size
 
 # The gem5 library simple board which can be used to run SE-mode simulations.
 board = SimpleBoard(
@@ -134,10 +136,10 @@ match binary:
 
 board.set_se_binary_workload(binary=BinaryResource(binary_path), arguments=binary_args)
 simulator = Simulator(board=board)
-print(f"Running benchmark {binary} for {sim_desc} with IQ = {args.iq_size}\n")
+print(f"Running benchmark {binary} for {sim_desc} with IQ = {args.iq_size} and DIQ = {args.diq_size}\n")
 
 # simulator.schedule_max_insts(1_000_000_000)
 # simulator.run()
 simulator.run(num_ticks)
 
-print(f"{binary} ran a total of {simulator.get_current_tick()} simulated ticks with IQ = {args.iq_size}\n")
+print(f"{binary} ran a total of {simulator.get_current_tick()} simulated ticks with IQ = {args.iq_size} and DIQ = {args.diq_size}\n")
