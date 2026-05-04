@@ -1,7 +1,7 @@
-import argparse
 import re
 import csv
 import sys
+import argparse
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -149,8 +149,7 @@ def plot_lines(records):
 def plot_bars(records, baseline_cfg="160/0", additive_cfg="120/80"):
     data       = {(r["config"], r["benchmark"]): r["ipc"] for r in records}
     ctx_map    = {r["config"]: r["ctx"] for r in records}
-    configs    = sorted(set(r["config"] for r in records),
-                        key=lambda c: (int(c.split("/")[0]), int(c.split("/")[1])))
+    configs    = sorted(set(r["config"] for r in records), key=lambda c: (int(c.split("/")[0]), int(c.split("/")[1])))
     cfg_labels = [f"{c}\n({ctx_map.get(c, '')})" if ctx_map.get(c) else c for c in configs]
     colors     = plt.rcParams["axes.prop_cycle"].by_key()["color"]
     sep_x      = configs.index(additive_cfg) - 0.5 if additive_cfg in configs else None
@@ -158,11 +157,10 @@ def plot_bars(records, baseline_cfg="160/0", additive_cfg="120/80"):
     def _sep(ax):
         if sep_x is not None:
             ax.axvline(sep_x, color="gray", linewidth=1.2, linestyle=":")
-            ax.text(sep_x + 0.05, ax.get_ylim()[1] * 0.97,
-                    "additive →", fontsize=7, color="gray", va="top")
+            ax.text(sep_x + 0.05, ax.get_ylim()[1] * 0.97, "additive →", fontsize=7, color="gray", va="top")
 
-    x      = np.arange(len(configs))
-    width  = 0.20
+    x = np.arange(len(configs))
+    width = 0.20
 
     figs = []
     for i, bench in enumerate(_benchmarks(records)):
@@ -221,9 +219,7 @@ def plot_table(records):
 
     figs = []
     for bench in _benchmarks(records):
-        present = [data[(iq, diq, bench)]
-                   for iq in iq_sizes for diq in diq_sizes
-                   if (iq, diq, bench) in data]
+        present = [data[(iq, diq, bench)] for iq in iq_sizes for diq in diq_sizes if (iq, diq, bench) in data]
         vmin, vmax = min(present), max(present)
         # Suppress colour scaling when all values are effectively identical
         meaningful = (vmax - vmin) >= COLOR_MIN_RANGE
@@ -243,8 +239,10 @@ def plot_table(records):
             cell_text.append(row_text)
             cell_colors.append(row_color)
 
-        fig, ax = plt.subplots(figsize=(max(8, len(iq_sizes) * 1.4),
-                                        max(4, len(diq_sizes) * 0.6 + 1.5)))
+        fig, ax = plt.subplots(figsize=(
+            max(8, len(iq_sizes) * 1.4),
+            max(4, len(diq_sizes) * 0.6 + 1.5)
+        ))
         ax.axis("off")
 
         tbl = ax.table(
@@ -258,9 +256,7 @@ def plot_table(records):
         tbl.set_fontsize(9)
         tbl.scale(1.2, 1.6)
 
-        ax.text(0.01, 0.98, "DIQ \\ IQ",
-                transform=ax.transAxes,
-                fontsize=8, va="top", ha="left", style="italic")
+        ax.text(0.01, 0.98, "DIQ \\ IQ", transform=ax.transAxes, fontsize=8, va="top", ha="left", style="italic")
 
         fig.suptitle(
             f"{BENCH_LABELS.get(bench, bench)}  "
@@ -302,10 +298,12 @@ def plot_downgrade(records, baseline_iq=None):
     diqs = set(c[1] for c in configs)
 
     def _geo_ipc(ctx):
-        ipcs = [v for b in benchmarks
-                for d in diqs
-                for v in [data.get((baseline_iq, d, ctx, b))]
-                if v]
+        ipcs = [
+            v for b in benchmarks
+            for d in diqs
+            for v in [data.get((baseline_iq, d, ctx, b))]
+            if v
+        ]
         return np.exp(np.mean(np.log(ipcs))) if ipcs else 0.0
 
     baseline_ctx = max(
@@ -319,8 +317,8 @@ def plot_downgrade(records, baseline_iq=None):
     x_bench = 1 + np.arange(len(benchmarks))
     x_geo   = np.array([len(benchmarks) + 1])
 
-    palette = list(plt.cm.tab10.colors) + list(plt.cm.tab10.colors)
-    colors  = {cfg: palette[i] for i, cfg in enumerate(configs)}
+    palette = list(plt.cm.tab20.colors) + list(plt.cm.tab20b.colors)
+    colors  = {cfg: palette[i % len(palette)] for i, cfg in enumerate(configs)}
 
     fig, ax = plt.subplots(figsize=(max(12, (len(benchmarks) + 1) * 1.6), 6))
 
@@ -349,23 +347,26 @@ def plot_downgrade(records, baseline_iq=None):
         # Label bars that are large enough to read
         for bar, v in zip(bars, values):
             if not np.isnan(v) and abs(v) >= 2:
-                ax.text(bar.get_x() + bar.get_width() / 2,
-                        v + (0.5 if v >= 0 else -0.5),
-                        f"{v:.1f}%", ha="center",
-                        va="bottom" if v >= 0 else "top",
-                        fontsize=7.5, rotation=90)
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    v + (0.5 if v >= 0 else -0.5),
+                    f"{v:.1f}%", ha="center",
+                    va="bottom" if v >= 0 else "top",
+                    fontsize=7.5, rotation=90
+                )
 
         if geo_ratios[cfg]:
             geo = np.exp(np.mean(np.log(geo_ratios[cfg])))
             gval = (1 - geo) * 100
-            gbar = ax.bar(x_geo + offset, [gval], width, color=colors[cfg],
-                          edgecolor="black", linewidth=0.3)
+            gbar = ax.bar(x_geo + offset, [gval], width, color=colors[cfg], edgecolor="black", linewidth=0.3)
             if abs(gval) >= 2:
-                ax.text(gbar[0].get_x() + gbar[0].get_width() / 2,
-                        gval + (0.5 if gval >= 0 else -0.5),
-                        f"{gval:.1f}%", ha="center",
-                        va="bottom" if gval >= 0 else "top",
-                        fontsize=5.5, rotation=90)
+                ax.text(
+                    gbar[0].get_x() + gbar[0].get_width() / 2,
+                    gval + (0.5 if gval >= 0 else -0.5),
+                    f"{gval:.1f}%", ha="center",
+                    va="bottom" if gval >= 0 else "top",
+                    fontsize=5.5, rotation=90
+                )
 
     ax.axhline(0, color="black", linewidth=0.8)
     ax.set_xticks(np.append(x_bench, x_geo))
@@ -381,8 +382,7 @@ def plot_downgrade(records, baseline_iq=None):
 
     short_base = _short_ctx(baseline_ctx, all_ctxs)
     base_label = f"IQ={baseline_iq} ({short_base})" if short_base else f"IQ={baseline_iq}"
-    ax.legend(title=f"baseline: {base_label}", fontsize=8, title_fontsize=8,
-              ncol=1, loc="upper left", bbox_to_anchor=(1.01, 1), borderaxespad=0)
+    ax.legend(title=f"baseline: {base_label}", fontsize=8, title_fontsize=8, ncol=1, loc="upper left", bbox_to_anchor=(1.01, 1), borderaxespad=0)
     fig.tight_layout()
     return fig
 
@@ -392,22 +392,14 @@ def plot_downgrade(records, baseline_iq=None):
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-f", dest="results_file", type=str,
-                        default=str(RESULTS_FILE),
-                        help="Path to results txt file")
+    parser.add_argument("-f", dest="results_file", type=str, default=str(RESULTS_FILE), help="Path to results txt file")
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--bar",       dest="mode", action="store_const", const="bar",
-                      help="Grouped bar chart (good for small config sets)")
-    mode.add_argument("--table",     dest="mode", action="store_const", const="table",
-                      help="Heatmap table: rows = DIQ, columns = IQ")
-    mode.add_argument("--downgrade", dest="mode", action="store_const", const="downgrade",
-                      help="Relative IPC downgrade vs baseline IQ, all benchmarks in one figure")
-    parser.add_argument("--baseline", dest="baseline", type=str, default="160/0",
-                        help="Baseline config for bar chart normalisation (default: 160/0)")
-    parser.add_argument("--baseline-iq", dest="baseline_iq", type=int, default=None,
-                        help="Baseline IQ size for --downgrade (default: largest IQ in data)")
-    parser.add_argument("-s", dest="save", action="store_true",
-                        help="Save each figure to plot_ipc/<bench>_<mode>.png")
+    mode.add_argument("--bar",       dest="mode", action="store_const", const="bar",       help="Grouped bar chart (good for small config sets)")
+    mode.add_argument("--table",     dest="mode", action="store_const", const="table",     help="Heatmap table: rows = DIQ, columns = IQ")
+    mode.add_argument("--downgrade", dest="mode", action="store_const", const="downgrade", help="Relative IPC downgrade vs baseline IQ, all benchmarks in one figure")
+    parser.add_argument("--baseline", dest="baseline", type=str, default="160/0", help="Baseline config for bar chart normalisation (default: 160/0)")
+    parser.add_argument("--baseline-iq", dest="baseline_iq", type=int, default=None, help="Baseline IQ size for --downgrade (default: largest IQ in data)")
+    parser.add_argument("-s", dest="save", action="store_true", help="Save each figure to plot_ipc/<bench>_<mode>.png")
     args = parser.parse_args()
 
     records = parse_results(Path(args.results_file))
@@ -415,20 +407,20 @@ if __name__ == "__main__":
     print(f"Wrote {CSV_OUT}")
     
     try:
-        if args.mode == "bar":
-            figs = plot_bars(records, baseline_cfg=args.baseline)
-            mode_tag = "bar"
-        elif args.mode == "table":
-            figs = plot_table(records)
-            mode_tag = "table"
-        elif args.mode == "downgrade":
+        if args.mode =="downgrade":
             fig = plot_downgrade(records, baseline_iq=args.baseline_iq)
             if args.save:
                 out = PLOT_DIR / "downgrade.png"
                 fig.savefig(out, dpi=150)
                 print(f"Saved {out}")
             plt.show()
-            exit(0)
+            sys.exit(0)
+        elif args.mode == "bar":
+            figs = plot_bars(records, baseline_cfg=args.baseline)
+            mode_tag = "bar"
+        elif args.mode == "table":
+            figs = plot_table(records)
+            mode_tag = "table"
         else:
             figs = plot_lines(records)
             mode_tag = "lines"
