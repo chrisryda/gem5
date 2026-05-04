@@ -380,6 +380,7 @@ class IceLakeCacheHierarchy(AbstractClassicCacheHierarchy, AbstractThreeLevelCac
                 response_latency=1,
                 mshrs=20,
                 tgts_per_mshr=12,
+                prefetcher=IceLakeStridePrefetcher(),
             )
             for _ in range(num_cores)
         ]
@@ -388,7 +389,7 @@ class IceLakeCacheHierarchy(AbstractClassicCacheHierarchy, AbstractThreeLevelCac
             L1ICache(
                 size=self._l1i_size,
                 assoc=self._l1i_assoc,
-                tag_latency=1 if self._zero_lat else 4,
+                tag_latency=1,
                 data_latency=1,
                 response_latency=1,
                 mshrs=16,
