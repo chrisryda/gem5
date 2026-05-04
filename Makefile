@@ -38,18 +38,16 @@ USE_DEF ?= 0
 # Script to invoke
 CONFIG := $(if $(filter 1,$(USE_DEF)),$(DEFAULT),$(MAGNA))
 
-# Extra flags forwarded to magna.py only (suppressed when using default.py)
-_MAGNA_ARGS :=
-_MAGNA_ARGS += $(if $(filter     1,$(ZLAT)),--zero-lat)
-_MAGNA_ARGS += $(if $(filter     1,$(SUPER)),--super)
-_MAGNA_ARGS += $(if $(filter-out 0,$(WARMUP)),--warmup-insts $(WARMUP))
-MAGNA_ARGS  := $(if $(filter 1,$(USE_DEF)),,$(_MAGNA_ARGS))
+# Extra flags forwarded to the config script
+CONFIG_ARGS :=
+CONFIG_ARGS += $(if $(filter     1,$(ZLAT)),--zero-lat)
+CONFIG_ARGS += $(if $(filter     1,$(SUPER)),--super)
+CONFIG_ARGS += $(if $(filter-out 0,$(WARMUP)),--warmup-insts $(WARMUP))
 
 IQ  ?= 120
 DIQ ?= 40
 
 # SIM_TAG encodes the full configuration; used in output directory and file names.
-# Examples: t100B_iq120_diq40 | t100B_super_iq32_diq0_zl | c5M_def_iq64
 _TAG_BASE  := $(shell echo "$(SLIM)" | tr -d ' -')
 _TAG_SUPER := $(if $(filter     1,$(SUPER)),_super)
 _TAG_WARM  := $(if $(filter-out 0,$(WARMUP)),_warm$(WARMUP))
@@ -86,7 +84,7 @@ prepro_sims: prepro_sims_whetstone prepro_sims_lbm_s prepro_sims_mcf_s prepro_si
 # Single-run targets  (make first-par [-jN] [options])
 # ---------------------------------------------------------------------------
 define run_first
-	@$(GEM5) --outdir=m5out-$(SIM_TAG)/$(1)-$(SIM_TAG) $(CONFIG) -b $(1) $(SLIM) $(IQ_ARGS) $(MAGNA_ARGS)
+	@$(GEM5) --outdir=m5out-$(SIM_TAG)/$(1)-$(SIM_TAG) $(CONFIG) -b $(1) $(SLIM) $(IQ_ARGS) $(CONFIG_ARGS)
 	@{ echo "---------- Begin Simulation Statistics ----------"; \
 	   echo "$(1) IQ=$(IQ) DIQ=$(DIQ) SIM_TAG=$(IQ)/$(DIQ) RUNTAG=$(SIM_TAG)"; \
 	   echo "----------"; \
@@ -138,7 +136,7 @@ iq-flat-$(1)-$(2):
 	@$(GEM5) --outdir=m5out-$$(_TAG)/$(1)-$(2) $(CONFIG) -b $(1) $(SLIM) \
 	    --iq-size $(word 1,$(subst -, ,$(2))) \
 	    --diq-size $(word 2,$(subst -, ,$(2))) \
-	    $(MAGNA_ARGS)
+	    $(CONFIG_ARGS)
 	@{ echo "---------- Begin Simulation Statistics ----------"; \
 	   echo "$(1) IQ=$(word 1,$(subst -, ,$(2))) DIQ=$(word 2,$(subst -, ,$(2))) SIM_TAG=$(word 1,$(subst -, ,$(2)))/$(word 2,$(subst -, ,$(2))) RUNTAG=$$(_TAG)"; \
 	   echo "----------"; \
