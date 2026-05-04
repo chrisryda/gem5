@@ -13,15 +13,15 @@ from gem5.components.memory.simple import SingleChannelSimpleMemory
 
 CLK_GHZ = 3.3
 
-def get_num_ticks(ticks: str) -> int:
-    ticks = ticks.strip().upper()
-    if ticks.endswith("M"):
-        return int(float(ticks[:-1]) * 1_000_000)
-    if ticks.endswith("B"):
-        return int(float(ticks[:-1]) * 1_000_000_000)
-    if ticks.isdigit():
-        return int(ticks)
-    raise ValueError(f"Unrecognized format: {ticks}")
+def parse_count(s: str) -> int:
+    s = s.strip().upper()
+    if s.endswith("M"):
+        return int(float(s[:-1]) * 1_000_000)
+    if s.endswith("B"):
+        return int(float(s[:-1]) * 1_000_000_000)
+    if s.isdigit():
+        return int(s)
+    raise ValueError(f"Unrecognized format: {s}")
 
 def get_num_cycles(cycles: str) -> int:
     cycles = cycles.strip().upper()
@@ -36,16 +36,6 @@ def get_num_cycles(cycles: str) -> int:
     ticks_per_cycle = round(1e12 / (CLK_GHZ * 1e9))
     return num * ticks_per_cycle
 
-def get_num_insts(insts: str) -> int:
-    insts = insts.strip().upper()
-    if insts.endswith("M"):
-        return int(float(insts[:-1]) * 1_000_000)
-    if insts.endswith("B"):
-        return int(float(insts[:-1]) * 1_000_000_000)
-    if insts.isdigit():
-        return int(insts)
-    raise ValueError(f"Unrecognized format: {insts}")
-
 parser = argparse.ArgumentParser()
 sim_limit = parser.add_mutually_exclusive_group()
 sim_limit.add_argument("-t", dest="ticks", type=str, help="The amount of ticks to simulate")
@@ -57,7 +47,7 @@ parser.add_argument("--diq-size", type=int, default=40, help="Delta IQ entries")
 parser.add_argument("--zero-lat", action="store_true", default=False, help="Use 1-cycle cache latencies and near-zero DRAM latency to isolate IQ bottleneck")
 parser.add_argument("--super", dest="super_mode", action="store_true", default=False, help="Use over-provisioned processor (wide pipeline, large ROB/LSQ/regfile) to isolate IQ as bottleneck")
 args = parser.parse_args()
-warmup_insts = get_num_insts(args.warmup_insts)
+warmup_insts = parse_count(args.warmup_insts)
 
 if warmup_insts > 0:
     if args.super_mode:
@@ -92,7 +82,7 @@ if args.cycles:
     sim_desc = f"{args.cycles} cycles"
 else:
     ticks = args.ticks if args.ticks else "1M"
-    num_ticks = get_num_ticks(ticks)
+    num_ticks = parse_count(ticks)
     sim_desc = f"{ticks} ticks"
 
 binary = args.binary if args.binary else "hello_world"
