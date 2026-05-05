@@ -52,11 +52,11 @@ def _apply_super_params(cpu):
     cpu.issueWidth = 12
     cpu.wbWidth = 12
     cpu.commitWidth = 12
-    cpu.numROBEntries = 1024
-    cpu.LQEntries = 1024
-    cpu.SQEntries = 1024
-    cpu.numPhysIntRegs = 1024
-    cpu.numPhysFloatRegs = 1024
+    cpu.numROBEntries = 512   # 1024 triggers gem5's instcount <= 1500 assertion
+    cpu.LQEntries = 512
+    cpu.SQEntries = 512
+    cpu.numPhysIntRegs = 512
+    cpu.numPhysFloatRegs = 512
 
 
 class DefaultSwitchableProcessor(SwitchableProcessor):

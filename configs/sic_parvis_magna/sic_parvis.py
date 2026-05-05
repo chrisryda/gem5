@@ -191,14 +191,14 @@ class SuperMagnaOpusInternalCore(ArmO3CPU):
         self.wbWidth = 12
         self.commitWidth = 12
 
-        self.numROBEntries = 1024
+        self.numROBEntries = 512   # 1024 triggers gem5's instcount <= 1500 assertion
         self.numIQEntries = iq_size
         self.numDeltaIQEntries = diq_size
-        self.LQEntries = 1024
-        self.SQEntries = 1024
+        self.LQEntries = 512
+        self.SQEntries = 512
 
-        self.numPhysIntRegs = 1024
-        self.numPhysFloatRegs = 1024
+        self.numPhysIntRegs = 512
+        self.numPhysFloatRegs = 512
 
         self.fuPool = SuperMagnaOpusFUPool()
         self.branchPred = MultiperspectivePerceptronTAGE64KB()
