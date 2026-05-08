@@ -13,9 +13,16 @@ RESULTS_FILE = Path(__file__).parent.parent / "iq-sweep-all.txt"
 CSV_OUT      = Path(__file__).parent / "iq_sweep_ipc.csv"
 PLOT_DIR     = Path(__file__).parent
 
-BENCHMARK_ORDER = ["whetstone", "mcf_s", "gcc_s", "lbm_s"]
-BENCH_LABELS    = {"whetstone": "Whetstone", "mcf_s": "mcf_s",
-                   "gcc_s": "gcc_s",         "lbm_s": "lbm_s"}
+BENCHMARK_ORDER = [
+    "whetstone", "mcf_s", "gcc_s", "lbm_s", 
+    "exchange2_s", "fotonik3d_s", "nab_s", "x264_s", 
+    "perlbench_s", "leela_s", "deepsjeng_s", "bwaves_s"
+]
+BENCH_LABELS    = {
+    "whetstone": "Whetstone", "mcf_s": "mcf_s", "gcc_s": "gcc_s", "lbm_s": "lbm_s",
+    "exchange2_s": "exchange2_s", "fotonik3d_s": "fotonik3d_s", "nab_s": "nab_s", "x264_s": "x264_s",
+    "perlbench_s": "perlbench_s", "leela_s": "leela_s", "deepsjeng_s": "deepsjeng_s", "bwaves_s": "bwaves_s",
+}
 
 # Minimum IPC range before colour scaling is considered meaningful.
 # Values within this band are treated as identical (mapped to neutral 0.5).
@@ -95,6 +102,12 @@ def _label_bars(ax, bar_container, fmt="{:.3f}"):
 def _benchmarks(records):
     return [b for b in BENCHMARK_ORDER
             if any(r["benchmark"] == b for r in records)]
+
+
+def _file_ctx(records):
+    """Return a context string for use in saved filenames."""
+    ctxs = sorted(set(r["ctx"] for r in records if r.get("ctx")))
+    return "+".join(ctxs) if ctxs else "unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -743,11 +756,13 @@ if __name__ == "__main__":
     write_csv(records, CSV_OUT)
     print(f"Wrote {CSV_OUT}")
 
+    ctx = _file_ctx(records)
+
     try:
         if args.mode == "downgrade":
             fig = plot_downgrade(records, baseline_iq=args.baseline_iq)
             if args.save:
-                out = PLOT_DIR / "downgrade.png"
+                out = PLOT_DIR / f"downgrade_{ctx}.png"
                 fig.savefig(out, dpi=150)
                 print(f"Saved {out}")
             plt.show()
@@ -756,7 +771,7 @@ if __name__ == "__main__":
             figs = plot_downgrade_split(records, baseline_iq=args.baseline_iq)
             for name, fig in figs:
                 if args.save:
-                    out = PLOT_DIR / f"downgrade_{name}.png"
+                    out = PLOT_DIR / f"downgrade_{name}_{ctx}.png"
                     fig.savefig(out, dpi=150)
                     print(f"Saved {out}")
             plt.show()
@@ -765,7 +780,7 @@ if __name__ == "__main__":
             figs = plot_budget_groups(records, baseline_iq=args.baseline_iq)
             for name, fig in figs:
                 if args.save:
-                    out = PLOT_DIR / f"budget_{name}.png"
+                    out = PLOT_DIR / f"budget_{name}_{ctx}.png"
                     fig.savefig(out, dpi=150)
                     print(f"Saved {out}")
             plt.show()
@@ -774,7 +789,7 @@ if __name__ == "__main__":
             figs = plot_iq_groups(records, baseline_iq=args.baseline_iq)
             for name, fig in figs:
                 if args.save:
-                    out = PLOT_DIR / f"iq_groups_{name}.png"
+                    out = PLOT_DIR / f"iq_groups_{name}_{ctx}.png"
                     fig.savefig(out, dpi=150)
                     print(f"Saved {out}")
             plt.show()
@@ -791,7 +806,7 @@ if __name__ == "__main__":
 
         for bench, fig in figs:
             if args.save:
-                out = PLOT_DIR / f"{mode_tag}_{bench}.png"
+                out = PLOT_DIR / f"{mode_tag}_{bench}_{ctx}.png"
                 fig.savefig(out, dpi=150)
                 print(f"Saved {out}")
 
