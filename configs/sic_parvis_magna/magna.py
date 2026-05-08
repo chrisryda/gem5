@@ -88,6 +88,8 @@ else:
 binary = args.binary if args.binary else "hello_world"
 home = os.path.expanduser("~")
 test_dir = f"{home}/nec/gem5/tests/ma-benchs" if "crd" in home else f"{home}/gem5/tests/ma-benchs"
+stdin_path = None
+cwd_path = None
 match binary:
     case "hello_world":
         binary_path = f"{test_dir.removesuffix('/ma-benchs')}/test-progs/hello/bin/arm/linux/hello"
@@ -104,8 +106,59 @@ match binary:
     case "gcc_s": # src and data folders copied from 502.gcc_r
         binary_path = f"{test_dir}/602.gcc_s/sgcc"
         binary_args = [f"{test_dir}/602.gcc_s/data/refspeed/input/gcc-pp.c"]
+    case "exchange2_s": #src and data folders copied from 548.exchange2_r, no refspeed inputs available
+        binary_path = f"{test_dir}/648.exchange2_s/exchange2_s"
+        binary_args = []
+        stdin_path = f"{test_dir}/648.exchange2_s/input.txt"
+    case "fotonik3d_s": # src and data folders copied from 549.fotonik3d_r
+        binary_path = f"{test_dir}/649.fotonik3d_s/fotonik3d_s"
+        binary_args = []
+        cwd_path = f"{test_dir}/649.fotonik3d_s/data/refspeed/input"
+    case "nab_s": # src and data folders copied from 544.nab_r
+        binary_path = f"{test_dir}/644.nab_s/nab_s"
+        binary_args = ["3j1n", "20140317", "220"]
+        cwd_path = f"{test_dir}/644.nab_s/data/refspeed/input"
+    case "x264_s": # src and data folders copied from 525.x264_r, refrate input only
+        binary_path = f"{test_dir}/625.x264_s/src/x264_s"
+        binary_args = [
+            "--pass", "1",
+            "--stats", "BuckBunny.264.stats",
+            "--bitrate", "1000",
+            "--frames", "500",
+            "-o", "BuckBunny_New.264",
+            f"{test_dir}/625.x264_s/data/refrate/input/BuckBunny.264",
+            "1280x720",
+        ]
+    case "perlbench_s": # src and data folders copied from 600.perlbench_r
+        binary_path = f"{test_dir}/600.perlbench_s/perlbench_s"
+        binary_args = [
+            "-I./lib",
+            "checkspam.pl",
+            "2500", "5", "25", "11", "150", "1", "1", "1"
+        ]
+        cwd_path = f"{test_dir}/600.perlbench_s"
+    case "leela_s": #src and data folders copied from 541.leela_r 
+        binary_path = f"{test_dir}/641.leela_s/leela_s"
+        binary_args = [f"{test_dir}/641.leela_s/ref.sgf"]
+    case "deepsjeng_s": #src folder copied from 531.deepsjeng_r 
+        binary_path = f"{test_dir}/631.deepsjeng_s/deepsjeng_s"
+        binary_args = [f"{test_dir}/631.deepsjeng_s/ref.txt"]
+    case "bwaves_s": #src and data folders copied from 503.bwaves_r
+        binary_path = f"{test_dir}/603.bwaves_s/speed_bwaves"
+        # binary_args = ["bwaves_1"]
+        binary_args = []
+        stdin_path = f"{test_dir}/603.bwaves_s/bwaves_1.in"
 
-board.set_se_binary_workload(binary=BinaryResource(binary_path), arguments=binary_args)
+board.set_se_binary_workload(
+    binary=BinaryResource(binary_path),
+    arguments=binary_args,
+    stdin_file=BinaryResource(stdin_path) if stdin_path else None,
+)
+if cwd_path:
+    proc = board.get_processor()
+    cores = proc._all_cores() if hasattr(proc, "_all_cores") else proc.get_cores()
+    for core in cores:
+        core.get_simobject().workload[0].cwd = cwd_path
 simulator = Simulator(board=board)
 print(f"Running benchmark {binary} for {sim_desc} with {proc_name}, IQ = {args.iq_size} and DIQ = {args.diq_size}\n")
 
