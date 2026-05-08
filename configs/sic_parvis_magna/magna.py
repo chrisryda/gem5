@@ -42,12 +42,16 @@ sim_limit.add_argument("-t", dest="ticks", type=str, help="The amount of ticks t
 sim_limit.add_argument("-c", dest="cycles", type=str, help="The amount of cycles to simulate")
 parser.add_argument("-b", dest="binary", type=str, help="The benchmark to run")
 parser.add_argument("--warmup-insts", type=str, default="0", help="Instructions to fast-forward in ATOMIC mode before timing measurement (e.g. 100M, 1B)")
+parser.add_argument("--o3-warmup-insts", type=str, default="0", help="Instructions to run on O3 (no stats) before measurement (e.g. 100M). Requires --warmup-insts > 0.")
 parser.add_argument("--iq-size", type=int, default=120, help="Regular IQ entries")
 parser.add_argument("--diq-size", type=int, default=40, help="Delta IQ entries")
 parser.add_argument("--zero-lat", action="store_true", default=False, help="Use 1-cycle cache latencies and near-zero DRAM latency to isolate IQ bottleneck")
 parser.add_argument("--super", dest="super_mode", action="store_true", default=False, help="Use over-provisioned processor (wide pipeline, large ROB/LSQ/regfile) to isolate IQ as bottleneck")
 args = parser.parse_args()
 warmup_insts = parse_count(args.warmup_insts)
+o3_warmup_insts = parse_count(args.o3_warmup_insts)
+if o3_warmup_insts > 0 and warmup_insts == 0:
+    parser.error("--o3-warmup-insts requires --warmup-insts to be set")
 
 if warmup_insts > 0:
     if args.super_mode:
@@ -163,12 +167,22 @@ simulator = Simulator(board=board)
 print(f"Running benchmark {binary} for {sim_desc} with {proc_name}, IQ = {args.iq_size} and DIQ = {args.diq_size}\n")
 
 if warmup_insts > 0:
-    print(f"\nFast-forwarding {warmup_insts:,} instructions in ATOMIC mode...\n\n")
+    print(f"\n[Phase 1] Fast-forwarding {warmup_insts:,} instructions in ATOMIC mode...\n")
     simulator.schedule_max_insts(warmup_insts)
     simulator.run()
-    m5.stats.reset()
     simulator.switch_processor()
-    print(f"\nWarmup done after {simulator.get_current_tick()} simulated ticks. Switched CPU, starting measurements...\n\n")
+    print(f"[Phase 1] Done at {simulator.get_current_tick():,} ticks. Switched to O3.\n")
+
+    if o3_warmup_insts > 0:
+        print(f"[Phase 2] Running {o3_warmup_insts:,} instructions on O3 (no stats)...\n")
+        simulator.schedule_max_insts(o3_warmup_insts)
+        simulator.run()
+        print(f"[Phase 2] Done at {simulator.get_current_tick():,} ticks.\n")
+    else:
+        print(f"[Phase 2] Skipped, no O3 warmup specified, skipping to measurement phase.\n")
+
+    m5.stats.reset()
+    print(f"[Phase 3] Starting measurement for {sim_desc}...\n")
     simulator.run(num_ticks)
 else:
     simulator.run(num_ticks)

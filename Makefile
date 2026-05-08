@@ -26,17 +26,19 @@ STATS_GREP      := grep -e "core.cpi" -e "core.ipc" -e "instsAdded" -e "deltaIns
 # ---------------------------------------------------------------------------
 # Run configuration  (override on the command line, e.g.: make first-par SUPER=1 ZERO_LAT=1)
 #
-#   SLIM    : simulation length, -t TICKS or -c CYCLES   (default: -t 100B)
-#   ZLAT    : 1 = near-zero cache/DRAM latency          
-#   SUPER   : 1 = over-provisioned SuperMagnaOpus        
-#   WARMUP  : N > 0 = fast-forward N insts before timing 
-#   USE_DEF : 1 = use default.py instead of magna.py
+#   SLIM     : simulation length, -t TICKS or -c CYCLES   (default: -t 100B)
+#   ZLAT     : 1 = near-zero cache/DRAM latency
+#   SUPER    : 1 = over-provisioned SuperMagnaOpus
+#   WARMUP   : N > 0 = fast-forward N insts in ATOMIC before timing
+#   O3WARMUP : N > 0 = run N insts on O3 (no stats) before measurement (requires WARMUP > 0)
+#   USE_DEF  : 1 = use default.py instead of magna.py
 # ---------------------------------------------------------------------------
-SLIM    ?= -t 100B
-ZLAT    ?= 0
-SUPER   ?= 0
-WARMUP  ?= 0
-USE_DEF ?= 0
+SLIM     ?= -t 100B
+ZLAT     ?= 0
+SUPER    ?= 0
+WARMUP   ?= 0
+O3WARMUP ?= 0
+USE_DEF  ?= 0
 
 # Script to invoke
 CONFIG := $(if $(filter 1,$(USE_DEF)),$(DEFAULT),$(MAGNA))
@@ -46,21 +48,23 @@ CONFIG_ARGS :=
 CONFIG_ARGS += $(if $(filter     1,$(ZLAT)),--zero-lat)
 CONFIG_ARGS += $(if $(filter     1,$(SUPER)),--super)
 CONFIG_ARGS += $(if $(filter-out 0,$(WARMUP)),--warmup-insts $(WARMUP))
+CONFIG_ARGS += $(if $(filter-out 0,$(O3WARMUP)),--o3-warmup-insts $(O3WARMUP))
 
 IQ  ?= 120
 DIQ ?= 40
 
 # SIM_TAG encodes the full configuration; used in output directory and file names.
-_TAG_BASE  := $(shell echo "$(SLIM)" | tr -d ' -')
-_TAG_SUPER := $(if $(filter     1,$(SUPER)),_super)
-_TAG_WARM  := $(if $(filter-out 0,$(WARMUP)),_warm$(WARMUP))
-_TAG_ZL    := $(if $(filter     1,$(ZLAT)),_zl)
-_TAG_DEF   := $(if $(filter     1,$(USE_DEF)),_def)
-_TAG_IQ    := _iq$(IQ)
-_TAG_DIQ   := _diq$(DIQ)
-SIM_TAG    := $(strip $(_TAG_BASE)$(_TAG_SUPER)$(_TAG_WARM)$(_TAG_ZL)$(_TAG_DEF)$(_TAG_IQ)$(_TAG_DIQ))
+_TAG_BASE    := $(shell echo "$(SLIM)" | tr -d ' -')
+_TAG_SUPER   := $(if $(filter     1,$(SUPER)),_super)
+_TAG_WARM    := $(if $(filter-out 0,$(WARMUP)),_warm$(WARMUP))
+_TAG_O3WARM  := $(if $(filter-out 0,$(O3WARMUP)),_o3warm$(O3WARMUP))
+_TAG_ZL      := $(if $(filter     1,$(ZLAT)),_zl)
+_TAG_DEF     := $(if $(filter     1,$(USE_DEF)),_def)
+_TAG_IQ      := _iq$(IQ)
+_TAG_DIQ     := _diq$(DIQ)
+SIM_TAG      := $(strip $(_TAG_BASE)$(_TAG_SUPER)$(_TAG_WARM)$(_TAG_O3WARM)$(_TAG_ZL)$(_TAG_DEF)$(_TAG_IQ)$(_TAG_DIQ))
 # Context without IQ/DIQ — used to build per-sweep stat filenames
-_CTX_TAG   := $(strip $(_TAG_BASE)$(_TAG_SUPER)$(_TAG_WARM)$(_TAG_ZL)$(_TAG_DEF))
+_CTX_TAG     := $(strip $(_TAG_BASE)$(_TAG_SUPER)$(_TAG_WARM)$(_TAG_O3WARM)$(_TAG_ZL)$(_TAG_DEF))
 
 IQ_ARGS := --iq-size $(IQ) --diq-size $(DIQ)
 
@@ -213,24 +217,12 @@ IQ_FLAT_TARGETS := $(foreach cfg,$(IQ_DIQ_CONFIGS),\
 sweep-iq-flat: $(IQ_FLAT_TARGETS)
 	@$(MAKE) collect-iq-results
 
-# Optional filters for collect-iq-results — reuse existing run vars plus ONLY_DIQ / ONLY_IQ:
-#   make collect-iq-results SLIM="-c 200M"   only 200M-cycle runs
-#   make collect-iq-results SUPER=1          only --super runs
-#   make collect-iq-results WARMUP=100M      only runs with 100M warmup
-#   make collect-iq-results ZLAT=1           only zero-latency runs
-#   make collect-iq-results USE_DEF=1        only default.py runs
-#   make collect-iq-results ONLY_DIQ=0       only configs where DIQ=0
-#   make collect-iq-results ONLY_IQ=32       only configs where IQ=32
-# Passing 0 explicitly excludes that category (opposite of =1):
-#   make collect-iq-results SUPER=0          exclude --super runs
-#   make collect-iq-results ZLAT=0           exclude zero-latency runs
-#   make collect-iq-results USE_DEF=0        exclude default.py runs
-#   make collect-iq-results WARMUP=0         exclude runs with warmup
-# Filters compose: make collect-iq-results SLIM="-c 200M" ONLY_DIQ=0 USE_DEF=0
+# Optional filters for collect-iq-results
 _CFILTER :=
 _CFILTER += $(if $(filter command line,$(origin SLIM)),$(_TAG_BASE))
 _CFILTER += $(if $(filter     1,$(SUPER)),_super)
 _CFILTER += $(if $(filter-out 0,$(WARMUP)),_warm$(WARMUP))
+_CFILTER += $(if $(filter-out 0,$(O3WARMUP)),_o3warm$(O3WARMUP))
 _CFILTER += $(if $(filter     1,$(ZLAT)),_zl)
 _CFILTER += $(if $(filter     1,$(USE_DEF)),_def)
 _CFILTER += $(if $(ONLY_DIQ),_diq$(ONLY_DIQ)/)
@@ -242,9 +234,10 @@ _CFILTER_EXCL += $(if $(filter command line,$(origin USE_DEF)),$(if $(filter 0,$
 _CFILTER_EXCL += $(if $(filter command line,$(origin SUPER)),$(if $(filter 0,$(SUPER)),_super))
 _CFILTER_EXCL += $(if $(filter command line,$(origin ZLAT)),$(if $(filter 0,$(ZLAT)),_zl))
 _CFILTER_EXCL += $(if $(filter command line,$(origin WARMUP)),$(if $(filter 0,$(WARMUP)),_warm))
+_CFILTER_EXCL += $(if $(filter command line,$(origin O3WARMUP)),$(if $(filter 0,$(O3WARMUP)),_o3warm))
 _CFILTER_EXCL_PIPE = $(foreach f,$(_CFILTER_EXCL), | grep -v '$(f)')
 
-#make collect-iq-results SLIM="" SUPER=1 WARMUP=100M ZLAT=0 USE_DEF=1
+#make collect-iq-results SLIM="" SUPER=1 WARMUP=100M O3WARMUP=100M ZLAT=0 USE_DEF=1
 collect-iq-results:
 	@rm -f iq-sweep-all.txt
 	$(if $(_CFILTER),@echo "Include:$(_CFILTER)")
