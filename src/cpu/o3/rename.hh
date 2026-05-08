@@ -260,6 +260,9 @@ class Rename
     /** Calculates the number of free IQ entries for a specific thread. */
     int calcFreeIQEntries(ThreadID tid);
 
+    /** Calculates the number of free delta IQ entries for a specific thread. */
+    int calcFreeDIQEntries(ThreadID tid);
+
     /** Calculates the number of free LQ entries for a specific thread. */
     int calcFreeLQEntries(ThreadID tid);
 
@@ -407,6 +410,7 @@ class Rename
     struct FreeEntries
     {
         unsigned iqEntries;
+        unsigned diqEntries;
         unsigned robEntries;
         unsigned lqEntries;
         unsigned sqEntries;

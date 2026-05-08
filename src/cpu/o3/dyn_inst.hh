@@ -183,6 +183,7 @@ class DynInst : public ExecContext, public RefCounted
                                  /// instructions ahead of it
         SerializeAfter,          /// Needs to serialize instructions behind it
         SerializeHandled,        /// Serialization has been handled
+        SrcRegsRenamed,          /// renameSrcRegs() has been called once
         NumStatus
     };
 
@@ -740,6 +741,17 @@ class DynInst : public ExecContext, public RefCounted
      *  serializing state.
      */
     bool isSerializeHandled() { return status[SerializeHandled]; }
+
+    /** Marks that renameSrcRegs() has been called on this instruction.
+     *  Used to guard stats (e.g. distDependecies) from being incremented
+     *  twice if the instruction is pushed back and re-processed by rename.
+     *  Necessary because the DIQ implementation may push an instruction 
+     *  back to insts_to_rename and call renameSrcRegs() more than once.
+     */
+    void setSrcRegsRenamed() { status.set(SrcRegsRenamed); }
+
+    /** Returns true if renameSrcRegs() has already been called once. */
+    bool isSrcRegsRenamed() { return status[SrcRegsRenamed]; }
 
     /** Returns the opclass of this instruction. */
     OpClass opClass() const { return staticInst->opClass(); }

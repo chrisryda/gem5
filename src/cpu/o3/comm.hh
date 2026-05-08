@@ -136,6 +136,7 @@ struct TimeStruct
     {
         // Also eventually include skid buffer space.
         unsigned freeIQEntries = 0;
+        unsigned freeDIQEntries = 0;
         unsigned freeLQEntries = 0;
         unsigned freeSQEntries = 0;
         unsigned dispatchedToLQ = 0;

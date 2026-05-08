@@ -82,7 +82,7 @@ Rename::Rename(CPU *_cpu, const BaseO3CPUParams &params)
         instsInProgress[tid] = 0;
         loadsInProgress[tid] = 0;
         storesInProgress[tid] = 0;
-        freeEntries[tid] = {0, 0, 0, 0};
+        freeEntries[tid] = {0, 0, 0, 0, 0};
         emptyROB[tid] = true;
         stalls[tid] = {false, false};
         serializeInst[tid] = nullptr;
@@ -242,6 +242,7 @@ Rename::clearStates(ThreadID tid)
     renameStatus[tid] = Idle;
 
     freeEntries[tid].iqEntries = iew_ptr->instQueue.numFreeEntries(tid);
+    freeEntries[tid].diqEntries = iew_ptr->instQueue.numFreeDeltaEntries(tid);
     freeEntries[tid].lqEntries = iew_ptr->ldstQueue.numFreeLoadEntries(tid);
     freeEntries[tid].sqEntries = iew_ptr->ldstQueue.numFreeStoreEntries(tid);
     freeEntries[tid].robEntries = commit_ptr->numROBFreeEntries(tid);
@@ -286,6 +287,7 @@ Rename::resetStage()
         renameStatus[tid] = Idle;
 
         freeEntries[tid].iqEntries = iew_ptr->instQueue.numFreeEntries(tid);
+        freeEntries[tid].diqEntries = iew_ptr->instQueue.numFreeDeltaEntries(tid);
         freeEntries[tid].lqEntries =
             iew_ptr->ldstQueue.numFreeLoadEntries(tid);
         freeEntries[tid].sqEntries =
@@ -549,22 +551,27 @@ Rename::renameInsts(ThreadID tid)
     // entries.
     int free_rob_entries = calcFreeROBEntries(tid);
     int free_iq_entries  = calcFreeIQEntries(tid);
+    int free_diq_entries = calcFreeDIQEntries(tid);
     int min_free_entries = free_rob_entries;
 
     FullSource source = ROB;
 
-    if (free_iq_entries < min_free_entries) {
-        min_free_entries = free_iq_entries;
+    // Use combined IQ+DIQ capacity: delta candidates can bypass a full IQ by
+    // going to the DIQ. Per-instruction routing is handled inside the loop.
+    int combined_iq_diq = free_iq_entries + free_diq_entries;
+    if (combined_iq_diq < min_free_entries) {
+        min_free_entries = combined_iq_diq;
         source = IQ;
     }
 
     // Check if there's any space left.
     if (min_free_entries <= 0) {
         DPRINTF(Rename,
-                "[tid:%i] Blocking due to no free ROB/IQ/ entries.\n"
+                "[tid:%i] Blocking due to no free ROB/IQ/DIQ entries.\n"
                 "ROB has %i free entries.\n"
-                "IQ has %i free entries.\n",
-                tid, free_rob_entries, free_iq_entries);
+                "IQ has %i free entries.\n"
+                "DIQ has %i free entries.\n",
+                tid, free_rob_entries, free_iq_entries, free_diq_entries);
 
         blockThisCycle = true;
 
@@ -578,7 +585,7 @@ Rename::renameInsts(ThreadID tid)
                 "[tid:%i] "
                 "Will have to block this cycle. "
                 "%i insts available, "
-                "but only %i insts can be renamed due to ROB/IQ/LSQ limits.\n",
+                "but only %i insts can be renamed due to ROB/IQ/DIQ limits.\n",
                 tid, insts_available, min_free_entries);
 
         insts_available = min_free_entries;
@@ -728,6 +735,19 @@ Rename::renameInsts(ThreadID tid)
         }
 
         renameSrcRegs(inst, inst->threadNumber);
+
+        // After src rename, delta candidacy is known. Route to DIQ if eligible
+        // and space is available; otherwise fall back to regular IQ.
+        // If neither queue has space, push back and block.
+        if (inst->isDeltaCand() && free_diq_entries > 0) {
+            --free_diq_entries;
+        } else if (free_iq_entries > 0) {
+            --free_iq_entries;
+        } else {
+            insts_to_rename.push_front(inst);
+            blockThisCycle = true;
+            break;
+        }
 
         renameDestRegs(inst, inst->threadNumber);
 
@@ -1043,6 +1063,10 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
         PhysRegIdPtr renamed_reg;
 
         renamed_reg = map->lookup(flat_reg);
+        // NOTE: Lookup stats below are also double-incremented if this
+        // instruction is pushed back and renameSrcRegs() is called again.
+        // Chose not to gate them with isSrcRegsRenamed() because we do
+        // not use these stats in our research and the push-back path is rare.
         switch (flat_reg.classValue()) {
           case InvalidRegClass:
             break;
@@ -1092,7 +1116,7 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
         {
             delta = curCycle - ts_it->second;
 
-            if (!scoreboard->getReg(renamed_reg)) 
+            if (!scoreboard->getReg(renamed_reg) && !inst->isSrcRegsRenamed())
             {
                 auto dd_it = distDependecies.find(delta);
                 if (dd_it != distDependecies.end()) {
@@ -1150,10 +1174,16 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
                     tid, renamed_reg->index(), renamed_reg->flatIndex(),
                     renamed_reg->className());
 
-            // Mark reg as non-dep so isDeltaCand() does not count it.  
+            // Mark reg as non-dep so isDeltaCand() does not count it.
             // Necessary for reg types (e.g. CC) not handled by delta-dep logic above.
             inst->setDeltaNonDep(src_idx, -1, -1);
-            inst->markSrcRegReady(src_idx);
+            // Guard against double-marking: if rename pushes an instruction back
+            // after renameSrcRegs was already called, this function runs again
+            // next cycle. markSrcRegReady is not idempotent (it increments
+            // readyRegs unconditionally), so skip if already marked.
+            if (!inst->readySrcIdx(src_idx)) {
+                inst->markSrcRegReady(src_idx);
+            }
         } else {
             DPRINTF(Rename,
                     "[tid:%i] "
@@ -1168,6 +1198,7 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
 
         ++stats.lookups;
     }
+    inst->setSrcRegsRenamed();
 }
 
 void
@@ -1267,6 +1298,13 @@ Rename::calcFreeIQEntries(ThreadID tid)
 }
 
 int
+Rename::calcFreeDIQEntries(ThreadID tid)
+{
+    int in_flight = instsInProgress[tid] - fromIEW->iewInfo[tid].dispatched;
+    return std::max(0, (int)freeEntries[tid].diqEntries - std::max(0, in_flight));
+}
+
+int
 Rename::calcFreeLQEntries(ThreadID tid)
 {
         int num_free = freeEntries[tid].lqEntries -
@@ -1348,8 +1386,10 @@ Rename::checkStall(ThreadID tid)
 void
 Rename::readFreeEntries(ThreadID tid)
 {
-    if (fromIEW->iewInfo[tid].usedIQ)
+    if (fromIEW->iewInfo[tid].usedIQ) {
         freeEntries[tid].iqEntries = fromIEW->iewInfo[tid].freeIQEntries;
+        freeEntries[tid].diqEntries = fromIEW->iewInfo[tid].freeDIQEntries;
+    }
 
     if (fromIEW->iewInfo[tid].usedLSQ) {
         freeEntries[tid].lqEntries = fromIEW->iewInfo[tid].freeLQEntries;

@@ -234,6 +234,8 @@ IEW::startupStage()
         toRename->iewInfo[tid].usedIQ = true;
         toRename->iewInfo[tid].freeIQEntries =
             instQueue.numFreeEntries(tid);
+        toRename->iewInfo[tid].freeDIQEntries =
+            instQueue.numFreeDeltaEntries(tid);
 
         toRename->iewInfo[tid].usedLSQ = true;
         toRename->iewInfo[tid].freeLQEntries =
@@ -256,6 +258,8 @@ IEW::clearStates(ThreadID tid)
     toRename->iewInfo[tid].usedIQ = true;
     toRename->iewInfo[tid].freeIQEntries =
         instQueue.numFreeEntries(tid);
+    toRename->iewInfo[tid].freeDIQEntries =
+        instQueue.numFreeDeltaEntries(tid);
 
     toRename->iewInfo[tid].usedLSQ = true;
     toRename->iewInfo[tid].freeLQEntries = ldstQueue.numFreeLoadEntries(tid);
@@ -1500,6 +1504,8 @@ IEW::tick()
             toRename->iewInfo[tid].usedIQ = true;
             toRename->iewInfo[tid].freeIQEntries =
                 instQueue.numFreeEntries(tid);
+            toRename->iewInfo[tid].freeDIQEntries =
+                instQueue.numFreeDeltaEntries(tid);
             toRename->iewInfo[tid].usedLSQ = true;
 
             toRename->iewInfo[tid].freeLQEntries =
