@@ -839,6 +839,17 @@ IEW::dispatch(ThreadID tid)
                 "dispatch.\n", tid);
 
         dispatchInsts(tid);
+    } else if (dispatchStatus[tid] == Blocked &&
+               instQueue.isFull(tid) &&
+               !instQueue.isDeltaFull(tid)) {
+        // IQ is full but DIQ has space: attempt to drain delta candidates
+        // into the DIQ. dispatchInsts() will block any non-delta instruction
+        // that cannot enter the full IQ.
+        DPRINTF(
+            IEW, "[tid:%i] IQ full but DIQ has space, attempting delta dispatch.\n",
+            tid
+        );
+        dispatchInsts(tid);
     } else if (dispatchStatus[tid] == Unblocking) {
         // Make sure that the skid buffer has something in it if the
         // status is unblocking.
@@ -867,7 +878,7 @@ IEW::dispatchInsts(ThreadID tid)
     // Obtain instructions from skid buffer if unblocking, or queue from rename
     // otherwise.
     std::queue<DynInstPtr> &insts_to_dispatch =
-        dispatchStatus[tid] == Unblocking ?
+        (dispatchStatus[tid] == Unblocking || dispatchStatus[tid] == Blocked) ?
         skidBuffer[tid] : insts[tid];
 
     int insts_to_add = insts_to_dispatch.size();
@@ -924,18 +935,17 @@ IEW::dispatchInsts(ThreadID tid)
 
         // Check for full conditions.
         if (instQueue.isFull(tid)) {
-            DPRINTF(IEW, "[tid:%i] Issue: IQ has become full.\n", tid);
+            // Allow delta candidates to bypass a full IQ into the DIQ.
+            if (!inst->isDeltaCand() || instQueue.isDeltaFull(tid)) {
+                DPRINTF(IEW, "[tid:%i] Issue: IQ has become full.\n", tid);
 
-            // Call function to start blocking.
-            block(tid);
-
-            // Set unblock to false. Special case where we are using
-            // skidbuffer (unblocking) instructions but then we still
-            // get full in the IQ.
-            toRename->iewUnblock[tid] = false;
-
-            ++iewStats.iqFullEvents;
-            break;
+                block(tid);
+                toRename->iewUnblock[tid] = false;
+                ++iewStats.iqFullEvents;
+                break;
+            }
+            // Delta candidate with DIQ space: fall through to insert(),
+            // which will route it to the DIQ without touching the IQ.
         }
 
         // Check LSQ if inst is LD/ST
@@ -1067,7 +1077,8 @@ IEW::dispatchInsts(ThreadID tid)
         // If the instruction queue is not full, then add the
         // instruction.
         if (add_to_iq) {
-            instQueue.insert(inst);
+            if (instQueue.insert(inst))
+                toRename->iewInfo[tid].dispatchedToDIQ++;
         }
 
         insts_to_dispatch.pop();

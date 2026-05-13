@@ -80,6 +80,7 @@ Rename::Rename(CPU *_cpu, const BaseO3CPUParams &params)
         renameStatus[tid] = Idle;
         renameMap[tid] = nullptr;
         instsInProgress[tid] = 0;
+        deltaInstsInProgress[tid] = 0;
         loadsInProgress[tid] = 0;
         storesInProgress[tid] = 0;
         freeEntries[tid] = {0, 0, 0, 0, 0};
@@ -252,6 +253,7 @@ Rename::clearStates(ThreadID tid)
     serializeInst[tid] = NULL;
 
     instsInProgress[tid] = 0;
+    deltaInstsInProgress[tid] = 0;
     loadsInProgress[tid] = 0;
     storesInProgress[tid] = 0;
 
@@ -299,6 +301,7 @@ Rename::resetStage()
         serializeInst[tid] = NULL;
 
         instsInProgress[tid] = 0;
+        deltaInstsInProgress[tid] = 0;
         loadsInProgress[tid] = 0;
         storesInProgress[tid] = 0;
 
@@ -461,11 +464,15 @@ Rename::tick()
     // @todo: make into updateProgress function
     for (ThreadID tid = 0; tid < numThreads; tid++) {
         instsInProgress[tid] -= fromIEW->iewInfo[tid].dispatched;
+        // Clamp rather than assert: a delta candidate accounted as IQ-bound at
+        // rename can end up in the DIQ at dispatch (IQ filled between rename
+        // and dispatch), making dispatchedToDIQ exceed deltaInstsInProgress.
+        deltaInstsInProgress[tid] = std::max(0, deltaInstsInProgress[tid] - (int)fromIEW->iewInfo[tid].dispatchedToDIQ);
         loadsInProgress[tid] -= fromIEW->iewInfo[tid].dispatchedToLQ;
         storesInProgress[tid] -= fromIEW->iewInfo[tid].dispatchedToSQ;
         assert(loadsInProgress[tid] >= 0);
         assert(storesInProgress[tid] >= 0);
-        assert(instsInProgress[tid] >=0);
+        assert(instsInProgress[tid] >= 0);
     }
 
 }
@@ -741,6 +748,7 @@ Rename::renameInsts(ThreadID tid)
         // If neither queue has space, push back and block.
         if (inst->isDeltaCand() && free_diq_entries > 0) {
             --free_diq_entries;
+            ++deltaInstsInProgress[tid];
         } else if (free_iq_entries > 0) {
             --free_iq_entries;
         } else {
@@ -1289,19 +1297,19 @@ Rename::calcFreeROBEntries(ThreadID tid)
 int
 Rename::calcFreeIQEntries(ThreadID tid)
 {
-    int num_free = freeEntries[tid].iqEntries -
-                  (instsInProgress[tid] - fromIEW->iewInfo[tid].dispatched);
-
-    //DPRINTF(Rename,"[tid:%i] %i iq free\n",tid,num_free);
-
-    return num_free;
+    // Only non-delta in-flight instructions will consume IQ slots.
+    int dispatched = fromIEW->iewInfo[tid].dispatched;
+    int dispatchedDIQ = fromIEW->iewInfo[tid].dispatchedToDIQ;
+    int in_flight_iq = (instsInProgress[tid] - deltaInstsInProgress[tid]) - (dispatched - dispatchedDIQ);
+    return (int)freeEntries[tid].iqEntries - in_flight_iq;
 }
 
 int
 Rename::calcFreeDIQEntries(ThreadID tid)
 {
-    int in_flight = instsInProgress[tid] - fromIEW->iewInfo[tid].dispatched;
-    return std::max(0, (int)freeEntries[tid].diqEntries - std::max(0, in_flight));
+    // Only delta in-flight instructions will consume DIQ slots.
+    int in_flight_diq = deltaInstsInProgress[tid] - fromIEW->iewInfo[tid].dispatchedToDIQ;
+    return std::max(0, (int)freeEntries[tid].diqEntries - in_flight_diq);
 }
 
 int

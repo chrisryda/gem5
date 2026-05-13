@@ -184,11 +184,15 @@ class InstructionQueue
     /** Returns whether or not the IQ is full for a specific thread. */
     bool isFull(ThreadID tid);
 
+    /** Returns whether or not the DIQ is full for a specific thread. */
+    bool isDeltaFull(ThreadID tid);
+
     /** Returns if there are any ready instructions in the IQ. */
     bool hasReadyInsts();
 
     /** Inserts a new instruction into the IQ. */
-    void insert(const DynInstPtr &new_inst);
+    /** Returns true if the instruction was placed in the delta IQ. */
+    bool insert(const DynInstPtr &new_inst);
 
     /** Inserts a new, non-speculative instruction into the IQ. */
     void insertNonSpec(const DynInstPtr &new_inst);

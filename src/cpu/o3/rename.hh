@@ -389,6 +389,11 @@ class Rename
      */
     int instsInProgress[MaxThreads];
 
+    /** Count of delta-candidate instructions in progress that have been routed
+     * toward the DIQ but are not yet included in its occupancy count.
+     */
+    int deltaInstsInProgress[MaxThreads];
+    
     /** Count of Load instructions in progress that have been sent off to the
      * IQ and ROB, but are not yet included in their occupancy counts.
      */

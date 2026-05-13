@@ -566,11 +566,17 @@ InstructionQueue::isFull()
 bool
 InstructionQueue::isFull(ThreadID tid)
 {
-    if (numFreeEntries(tid) == 0) { 
+    if (numFreeEntries(tid) == 0) {
         return(true);
     } else {
         return(false);
     }
+}
+
+bool
+InstructionQueue::isDeltaFull(ThreadID tid)
+{
+    return deltaCount[tid] >= maxDeltaEntries[tid];
 }
 
 bool
@@ -589,7 +595,7 @@ InstructionQueue::hasReadyInsts()
     return false;
 }
 
-void
+bool
 InstructionQueue::insert(const DynInstPtr &new_inst)
 {
     if (new_inst->isFloating()) {
@@ -605,13 +611,24 @@ InstructionQueue::insert(const DynInstPtr &new_inst)
     bool use_delta_iq = (freeDeltaEntries != 0) && new_inst->isDeltaCand();
     if (use_delta_iq) {
         PhysRegIdPtr d_src_reg = new_inst->renamedSrcIdx(new_inst->getDeltaSrcIdx());
-        if (regScoreboard[d_src_reg->flatIndex()]) 
+        if (regScoreboard[d_src_reg->flatIndex()])
         {
-            DPRINTF(Delta,
-                "IQDelta: Producer already done for [sn:%llu], falling back to regular IQ.\n",
-                new_inst->seqNum
-            );
-            use_delta_iq = false;
+            if (freeEntries != 0) {
+                DPRINTF(Delta,
+                    "IQDelta: Producer already done for [sn:%llu], falling back to regular IQ.\n",
+                    new_inst->seqNum
+                );
+                use_delta_iq = false;
+            } else {
+                // IQ is full but producer is done: keep in DIQ and mark
+                // the delta source ready so addIfReady() fires immediately.
+                DPRINTF(Delta,
+                    "IQDelta: Producer done for [sn:%llu] but IQ full; "
+                    "staying in DIQ, marking src ready.\n",
+                    new_inst->seqNum
+                );
+                new_inst->markSrcRegReady(new_inst->getDeltaSrcIdx());
+            }
         }
     }
 
@@ -643,10 +660,13 @@ InstructionQueue::insert(const DynInstPtr &new_inst)
         new_inst->setInIQ();
         new_inst->setInDeltaIQ();
 
-        // Sanity check
-        assert(!new_inst->readyToIssue());
-
-        deltaWakeupMap[prod_seq].push_back(new_inst);
+        // Only register for wakeup if the producer hasn't completed yet.
+        // If the producer is done and we're keeping this inst in the DIQ
+        // because the IQ was full, it is already marked ready and
+        // addIfReady() will schedule it directly — no wakeup needed.
+        if (!new_inst->readyToIssue()) {
+            deltaWakeupMap[prod_seq].push_back(new_inst);
+        }
     } else {
         DPRINTF(IQ, "Adding instruction [sn:%llu] PC %s to the IQ.\n",
             new_inst->seqNum, new_inst->pcState()
@@ -680,6 +700,7 @@ InstructionQueue::insert(const DynInstPtr &new_inst)
     }
 
     assert(freeEntries == (numEntries - countInsts()));
+    return use_delta_iq;
 }
 
 void
@@ -1519,6 +1540,19 @@ InstructionQueue::doSquash(ThreadID tid)
         squashed_inst->clearInDeltaIQ();
         ++freeDeltaEntries;
         --deltaCount[tid];
+
+        // Clear dependGraph HEAD references for each dest register.
+        // Mirrors the regular IQ squash path (see above). Without this,
+        // squashed delta insts leave stale DynInstPtr refs that accumulate
+        // and push cpu->instcount past the assertion limit.
+        for (int dest_reg_idx = 0; dest_reg_idx < squashed_inst->numDestRegs(); dest_reg_idx++) {
+            PhysRegIdPtr dest_reg = squashed_inst->renamedDestIdx(dest_reg_idx);
+            if (dest_reg->isFixedMapping())
+                continue;
+            assert(dependGraph.empty(dest_reg->flatIndex()));
+            dependGraph.clearInst(dest_reg->flatIndex());
+        }
+
         squash_it = deltaInstList[tid].erase(squash_it);
     }
 }
