@@ -617,26 +617,16 @@ InstructionQueue::insert(const DynInstPtr &new_inst)
     assert(new_inst);
 
     bool use_delta_iq = (freeDeltaEntries != 0) && new_inst->isDeltaCand();
-    if (use_delta_iq) {
+    if (use_delta_iq && freeEntries != 0) 
+    {
         PhysRegIdPtr d_src_reg = new_inst->renamedSrcIdx(new_inst->getDeltaSrcIdx());
-        if (regScoreboard[d_src_reg->flatIndex()])
+        if (regScoreboard[d_src_reg->flatIndex()]) 
         {
-            if (freeEntries != 0) {
-                DPRINTF(Delta,
-                    "IQDelta: Producer already done for [sn:%llu], falling back to regular IQ.\n",
-                    new_inst->seqNum
-                );
-                use_delta_iq = false;
-            } else {
-                // IQ is full but producer is done: keep in DIQ and mark
-                // the delta source ready so addIfReady() fires immediately.
-                DPRINTF(Delta,
-                    "IQDelta: Producer done for [sn:%llu] but IQ full; "
-                    "staying in DIQ, marking src ready.\n",
-                    new_inst->seqNum
-                );
-                new_inst->markSrcRegReady(new_inst->getDeltaSrcIdx());
-            }
+            DPRINTF(Delta,
+                "IQDelta: Producer already done for [sn:%llu], falling back to regular IQ.\n",
+                new_inst->seqNum
+            );
+            use_delta_iq = false;
         }
     }
 
