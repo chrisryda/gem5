@@ -580,6 +580,14 @@ InstructionQueue::isDeltaFull(ThreadID tid)
 }
 
 bool
+InstructionQueue::isDeltaProducerDispatched(const DynInstPtr &inst) const
+{
+    const PhysRegIdPtr src_reg = inst->renamedSrcIdx(inst->getDeltaSrcIdx());
+    if (src_reg->isFixedMapping()) return true;
+    return static_cast<bool>(dependGraph.instHead(src_reg->flatIndex()));
+}
+
+bool
 InstructionQueue::hasReadyInsts()
 {
     if (!listOrder.empty()) {
@@ -595,7 +603,7 @@ InstructionQueue::hasReadyInsts()
     return false;
 }
 
-bool
+void
 InstructionQueue::insert(const DynInstPtr &new_inst)
 {
     if (new_inst->isFloating()) {
@@ -649,21 +657,25 @@ InstructionQueue::insert(const DynInstPtr &new_inst)
             prod_seq, (freeDeltaEntries - 1)
         );
 
-        deltaInstList[new_inst->threadNumber].push_back(new_inst);
-
         --freeDeltaEntries;
 
         ++iqStats.deltaInstsAdded;
-        
+
         ++deltaCount[new_inst->threadNumber];
-        
+
         new_inst->setInIQ();
         new_inst->setInDeltaIQ();
 
-        // Only register for wakeup if the producer hasn't completed yet.
-        // If the producer is done and we're keeping this inst in the DIQ
-        // because the IQ was full, it is already marked ready and
-        // addIfReady() will schedule it directly — no wakeup needed.
+        // Track in deltaInstList only when the list owns the slot's lifetime:
+        // - non-mem insts waiting for wakeup (removed by wakeDependents)
+        // - mem insts (removed by completedMemInst or doSquash)
+        // Non-mem already-ready insts (producer done + IQ full path) are
+        // tracked via readyInsts only; adding them here causes doSquash to
+        // double-free freeDeltaEntries after scheduleReadyInsts issues them.
+        if (!new_inst->readyToIssue() || new_inst->isMemRef()) {
+            deltaInstList[new_inst->threadNumber].push_back(new_inst);
+        }
+
         if (!new_inst->readyToIssue()) {
             deltaWakeupMap[prod_seq].push_back(new_inst);
         }
@@ -700,7 +712,6 @@ InstructionQueue::insert(const DynInstPtr &new_inst)
     }
 
     assert(freeEntries == (numEntries - countInsts()));
-    return use_delta_iq;
 }
 
 void
@@ -909,6 +920,11 @@ InstructionQueue::scheduleReadyInsts()
                 ++freeDeltaEntries;
                 --deltaCount[issuing_inst->threadNumber];
                 issuing_inst->clearInDeltaIQ();
+                for (int i = 0; i < issuing_inst->numDestRegs(); ++i) {
+                    PhysRegIdPtr dest_reg = issuing_inst->renamedDestIdx(i);
+                    if (!dest_reg->isFixedMapping())
+                        dependGraph.clearInst(dest_reg->flatIndex());
+                }
             }
 
             listOrder.erase(order_it++);

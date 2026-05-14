@@ -187,12 +187,16 @@ class InstructionQueue
     /** Returns whether or not the DIQ is full for a specific thread. */
     bool isDeltaFull(ThreadID tid);
 
+    /** Returns true if the unready source of a delta candidate has
+     *  its producer already in the dependency graph (i.e., dispatched). */
+    bool isDeltaProducerDispatched(const DynInstPtr &inst) const;
+
     /** Returns if there are any ready instructions in the IQ. */
     bool hasReadyInsts();
 
-    /** Inserts a new instruction into the IQ. */
-    /** Returns true if the instruction was placed in the delta IQ. */
-    bool insert(const DynInstPtr &new_inst);
+    /** Inserts a new instruction into the IQ or DIQ. Check
+     *  inst->isInDeltaIQ() after the call to determine which queue. */
+    void insert(const DynInstPtr &new_inst);
 
     /** Inserts a new, non-speculative instruction into the IQ. */
     void insertNonSpec(const DynInstPtr &new_inst);

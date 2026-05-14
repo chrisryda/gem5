@@ -467,7 +467,9 @@ Rename::tick()
         // Clamp rather than assert: a delta candidate accounted as IQ-bound at
         // rename can end up in the DIQ at dispatch (IQ filled between rename
         // and dispatch), making dispatchedToDIQ exceed deltaInstsInProgress.
-        deltaInstsInProgress[tid] = std::max(0, deltaInstsInProgress[tid] - (int)fromIEW->iewInfo[tid].dispatchedToDIQ);
+        deltaInstsInProgress[tid] = std::max(0, deltaInstsInProgress[tid]
+            - (int)fromIEW->iewInfo[tid].dispatchedToDIQ
+            - (int)fromIEW->iewInfo[tid].dispatchedFromDIQToIQ);
         loadsInProgress[tid] -= fromIEW->iewInfo[tid].dispatchedToLQ;
         storesInProgress[tid] -= fromIEW->iewInfo[tid].dispatchedToSQ;
         assert(loadsInProgress[tid] >= 0);
@@ -749,6 +751,7 @@ Rename::renameInsts(ThreadID tid)
         if (inst->isDeltaCand() && free_diq_entries > 0) {
             --free_diq_entries;
             ++deltaInstsInProgress[tid];
+            inst->setReservedForDIQ();
         } else if (free_iq_entries > 0) {
             --free_iq_entries;
         } else {

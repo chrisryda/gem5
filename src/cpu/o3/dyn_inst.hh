@@ -159,6 +159,7 @@ class DynInst : public ExecContext, public RefCounted
     {
         IqEntry,                 /// Instruction is in the IQ
         DeltaIqEntry,            /// Instruction is in the delta IQ
+        ReservedForDIQ,          /// Rename reserved a DIQ slot for this inst
         RobEntry,                /// Instruction is in the ROB
         LsqEntry,                /// Instruction is in the LSQ
         Completed,               /// Instruction has completed
@@ -654,7 +655,7 @@ class DynInst : public ExecContext, public RefCounted
         }
     }
 
-    /** Sets source register idx as dependent with the provided fields */
+    /** SetsAce register idx as dependent with the provided fields */
     void setDeltaDep(int idx, int64_t seqNum, int64_t cycleDist)
     {
         deltaVec.at(idx).dependent = true;
@@ -890,12 +891,18 @@ class DynInst : public ExecContext, public RefCounted
 
     /** Sets this instruction as an entry in the delta IQ. */
     void setInDeltaIQ() { status.set(DeltaIqEntry); }
-    
+
     /** Unsets this instruction as a entry the delta IQ. */
     void clearInDeltaIQ() { status.reset(DeltaIqEntry); }
 
     /** Returns whether or not this instruction is in the delta IQ */
     bool isInDeltaIQ() const { return status[DeltaIqEntry]; }
+
+    /** Marks that rename reserved a DIQ slot for this instruction. */
+    void setReservedForDIQ() { status.set(ReservedForDIQ); }
+
+    /** Returns whether rename reserved a DIQ slot for this instruction. */
+    bool isReservedForDIQ() const { return status[ReservedForDIQ]; }
 
     /** Sets this instruction as squashed in the IQ. */
     void setSquashedInIQ() { status.set(SquashedInIQ); status.set(Squashed);}
