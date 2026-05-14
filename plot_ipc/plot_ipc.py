@@ -36,9 +36,6 @@ def _ctx_from_runtag(runtag: str) -> str:
     return ctx
 
 
-def _iq_label(iq: int, ctx: str) -> str:
-    return f"{iq}\n({ctx})" if ctx else str(iq)
-
 
 def parse_results(path):
     records, current = [], {}
@@ -140,11 +137,12 @@ def plot_lines(records):
                 ax.text(x, y, f"{y:.3f}",
                         ha="center", va="bottom", rotation=90, fontsize=5)
 
-        ax.set_title(BENCH_LABELS.get(bench, bench))
+        ctxs_str = ", ".join(sorted(set(ctx_map.values())))
+        ax.set_title(f"{BENCH_LABELS.get(bench, bench)}  ({ctxs_str})" if ctxs_str else BENCH_LABELS.get(bench, bench))
         ax.set_xlabel("IQ size")
         ax.set_ylabel("IPC")
         ax.set_xticks(iq_sizes)
-        ax.set_xticklabels([_iq_label(iq, ctx_map.get(iq, "")) for iq in iq_sizes], fontsize=7)
+        ax.set_xticklabels([str(iq) for iq in iq_sizes], fontsize=7)
         ax.margins(y=0.20)
         ax.legend(fontsize=7, ncol=2)
         ax.yaxis.set_minor_locator(mticker.AutoMinorLocator())
@@ -164,7 +162,7 @@ def plot_bars(records, baseline_cfg="160/0", additive_cfg="120/80"):
     data       = {(r["config"], r["benchmark"]): r["ipc"] for r in records}
     ctx_map    = {r["config"]: r["ctx"] for r in records}
     configs    = sorted(set(r["config"] for r in records), key=lambda c: (int(c.split("/")[0]), int(c.split("/")[1])))
-    cfg_labels = [f"{c}\n({ctx_map.get(c, '')})" if ctx_map.get(c) else c for c in configs]
+    cfg_labels = list(configs)
     colors     = plt.rcParams["axes.prop_cycle"].by_key()["color"]
     sep_x      = configs.index(additive_cfg) - 0.5 if additive_cfg in configs else None
 
@@ -212,7 +210,9 @@ def plot_bars(records, baseline_cfg="160/0", additive_cfg="120/80"):
         ax.grid(axis="y", linestyle="--", alpha=0.35)
         _sep(ax)
 
-        fig.suptitle(BENCH_LABELS.get(bench, bench), fontsize=13)
+        unique_ctxs = sorted(set(ctx_map.values()))
+        ctx_str = "  ".join(unique_ctxs)
+        fig.suptitle(f"{BENCH_LABELS.get(bench, bench)}  {ctx_str}" if ctx_str else BENCH_LABELS.get(bench, bench), fontsize=13)
         fig.tight_layout()
         figs.append((bench, fig))
 
@@ -253,9 +253,11 @@ def plot_table(records):
             cell_text.append(row_text)
             cell_colors.append(row_color)
 
+        n_rows = len(diq_sizes) + 1  # +1 for header
+        n_cols = len(iq_sizes)  + 1  # +1 for row labels
         fig, ax = plt.subplots(figsize=(
-            max(8, len(iq_sizes) * 1.4),
-            max(4, len(diq_sizes) * 0.6 + 1.5)
+            max(5, n_cols * 0.70),
+            max(2, n_rows * 0.32 + 0.9),
         ))
         ax.axis("off")
 
@@ -263,41 +265,28 @@ def plot_table(records):
             cellText=cell_text,
             cellColours=cell_colors,
             rowLabels=[str(d) for d in diq_sizes],
-            colLabels=[_iq_label(iq, ctx_map.get(iq, "")) for iq in iq_sizes],
-            loc="center",
+            colLabels=[str(iq) for iq in iq_sizes],
+            bbox=[0, 0, 1, 1],
         )
         tbl.auto_set_font_size(False)
         tbl.set_fontsize(9)
-        tbl.scale(1.2, 1.6)
 
-        ax.text(0.01, 0.98, "DIQ \\ IQ", transform=ax.transAxes, fontsize=8, va="top", ha="left", style="italic")
+        ax.text(0.0, 1.0, "DIQ \\ IQ", transform=ax.transAxes, fontsize=8, va="bottom", ha="left", style="italic")
 
+        unique_ctxs = sorted(set(ctx_map.values()))
+        ctx_str = "  ".join(unique_ctxs)
         fig.suptitle(
-            f"{BENCH_LABELS.get(bench, bench)}  "
-            f"(green = high IPC, red = low — range {vmin:.3f}–{vmax:.3f})",
+            f"{BENCH_LABELS.get(bench, bench)}\n{ctx_str}\nIPC range {vmin:.3f} - {vmax:.3f} ({100 * (vmax - vmin) / vmin:.1f}%)",
             fontsize=11,
         )
-        fig.tight_layout()
+        fig.tight_layout(rect=[0, 0, 1, 0.95])
         figs.append((bench, fig))
 
     return figs
 
-
 # ---------------------------------------------------------------------------
 # Downgrade bar chart — one figure, all benchmarks + GeoMean
 # ---------------------------------------------------------------------------
-def _short_ctx(ctx: str, all_ctxs) -> str:
-    """Strip the leading sim-time component (e.g. 't10B_', 'c5M_') shared by all contexts."""
-    if not ctx:
-        return ""
-    common = re.match(r'^[tc]\d+[BM]_?', ctx)
-    prefix_len = len(common.group()) if common else 0
-    # Only strip if every ctx starts with the same prefix
-    if prefix_len and all(c.startswith(ctx[:prefix_len]) for c in all_ctxs if c):
-        return ctx[prefix_len:]
-    return ctx
-
-
 def plot_downgrade(records, baseline_iq=None):
     data    = {(r["iq"], r["diq"], r["ctx"], r["benchmark"]): r["ipc"] for r in records}
     configs = sorted(
@@ -342,8 +331,7 @@ def plot_downgrade(records, baseline_iq=None):
         iq, diq, ctx = cfg
         offset  = (i - n_cfg / 2 + 0.5) * width
         iq_part = str(iq) if diq == 0 else f"{iq}/{diq}"
-        short   = _short_ctx(ctx, all_ctxs)
-        label   = f"IQ={iq_part} ({short})" if short else f"IQ={iq_part}"
+        label   = f"IQ={iq_part}"
 
         values = []
         for bench in benchmarks:
@@ -394,9 +382,10 @@ def plot_downgrade(records, baseline_iq=None):
     ax.yaxis.set_minor_locator(mticker.AutoMinorLocator())
     ax.grid(axis="y", which="major", linestyle="--", alpha=0.4)
 
-    short_base = _short_ctx(baseline_ctx, all_ctxs)
-    base_label = f"IQ={baseline_iq} ({short_base})" if short_base else f"IQ={baseline_iq}"
-    ax.legend(title=f"baseline: {base_label}", fontsize=8, title_fontsize=8, ncol=1, loc="upper left", bbox_to_anchor=(1.01, 1), borderaxespad=0)
+    ctx_str = ", ".join(sorted(all_ctxs))
+    if ctx_str:
+        ax.set_title(ctx_str, fontsize=9)
+    ax.legend(title=f"baseline: IQ={baseline_iq}", fontsize=8, title_fontsize=8, ncol=1, loc="upper left", bbox_to_anchor=(1.01, 1), borderaxespad=0)
     fig.tight_layout()
     return fig
 
@@ -408,7 +397,7 @@ def plot_downgrade_split(records, baseline_iq=None):
     data       = {(r["iq"], r["diq"], r["ctx"], r["benchmark"]): r["ipc"] for r in records}
     configs    = sorted(
         set((r["iq"], r["diq"], r["ctx"]) for r in records),
-        key=lambda c: (-c[0], c[2]),
+        key=lambda c: (-c[0], c[1], c[2]),
     )
     benchmarks = _benchmarks(records)
     all_ctxs   = set(c[2] for c in configs)
@@ -434,14 +423,12 @@ def plot_downgrade_split(records, baseline_iq=None):
     x     = np.arange(len(configs))
     width = 0.6
 
-    short_base = _short_ctx(baseline_ctx, all_ctxs)
-    base_label = f"IQ={baseline_iq} ({short_base})" if short_base else f"IQ={baseline_iq}"
+    ctx_str = ", ".join(sorted(all_ctxs))
 
     cfg_labels = []
     for iq, diq, ctx in configs:
-        short   = _short_ctx(ctx, all_ctxs)
         iq_part = str(iq) if diq == 0 else f"{iq}/{diq}"
-        cfg_labels.append(f"{iq_part}\n({short})" if short else iq_part)
+        cfg_labels.append(iq_part)
 
     ratios = {}
     for cfg in configs:
@@ -472,7 +459,10 @@ def plot_downgrade_split(records, baseline_iq=None):
         ax.yaxis.set_major_formatter(mticker.PercentFormatter())
         ax.yaxis.set_minor_locator(mticker.AutoMinorLocator())
         ax.grid(axis="y", which="major", linestyle="--", alpha=0.4)
-        ax.set_title(f"{title}  (baseline: {base_label})")
+        title_str = f"{title}  (baseline: IQ={baseline_iq})"
+        if ctx_str:
+            title_str += f"  [{ctx_str}]"
+        ax.set_title(title_str)
         fig.tight_layout()
         return fig
 
@@ -541,8 +531,7 @@ def plot_budget_groups(records, baseline_iq=None, bucket_size=10):
             if ipc_base and ipc_cfg:
                 ratios[(cfg, bench)] = ipc_cfg / ipc_base
 
-    short_base = _short_ctx(baseline_ctx, all_ctxs)
-    base_label = f"IQ={baseline_iq} ({short_base})" if short_base else f"IQ={baseline_iq}"
+    ctx_str = ", ".join(sorted(all_ctxs))
 
     bar_w  = 0.8
     gap    = 0.6
@@ -580,7 +569,10 @@ def plot_budget_groups(records, baseline_iq=None, bucket_size=10):
         ax.yaxis.set_major_formatter(mticker.PercentFormatter())
         ax.yaxis.set_minor_locator(mticker.AutoMinorLocator())
         ax.grid(axis="y", which="major", linestyle="--", alpha=0.4)
-        ax.set_title(f"{title}  (baseline: {base_label})")
+        title_str = f"{title}  (baseline: IQ={baseline_iq})"
+        if ctx_str:
+            title_str += f"  [{ctx_str}]"
+        ax.set_title(title_str)
         # Only legend entries for DIQ values that actually appear in this data
         present_diqs = sorted(set(c[1] for c in configs))
         patches = [mpatches.Patch(facecolor=diq_colors[diq], edgecolor="black", label=f"DIQ={diq}")
@@ -650,8 +642,7 @@ def plot_iq_groups(records, baseline_iq=None):
             if ipc_base and ipc_cfg:
                 ratios[(cfg, bench)] = ipc_cfg / ipc_base
 
-    short_base = _short_ctx(baseline_ctx, all_ctxs)
-    base_label = f"IQ={baseline_iq} ({short_base})" if short_base else f"IQ={baseline_iq}"
+    ctx_str = ", ".join(sorted(all_ctxs))
 
     bar_w      = 0.8
     gap        = 1.2   # wider gap between IQ groups than within
@@ -713,7 +704,10 @@ def plot_iq_groups(records, baseline_iq=None):
         ax.yaxis.set_major_formatter(mticker.PercentFormatter())
         ax.yaxis.set_minor_locator(mticker.AutoMinorLocator())
         ax.grid(axis="y", which="major", linestyle="--", alpha=0.4)
-        ax.set_title(f"{title}  (baseline: {base_label})", pad=12)
+        title_str = f"{title}  (baseline: IQ={baseline_iq})"
+        if ctx_str:
+            title_str += f"  [{ctx_str}]"
+        ax.set_title(title_str, pad=12)
         patches = [mpatches.Patch(facecolor=iq_colors[iq], edgecolor="black", label=f"IQ={iq}")
                    for iq in iq_sizes]
         ax.legend(handles=patches, fontsize=8)
