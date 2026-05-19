@@ -53,6 +53,7 @@
 #include "debug/Rename.hh"
 #include "debug/Delta.hh"
 #include "params/BaseO3CPU.hh"
+#include "sim/core.hh"
 
 namespace gem5
 {
@@ -69,6 +70,9 @@ Rename::Rename(CPU *_cpu, const BaseO3CPUParams &params)
       numThreads(params.numThreads),
       stats(_cpu)
 {
+    if (params.numIQEntries == 160 && params.numDeltaIQEntries == 0)
+        registerExitCallback([this]() { writeDistDependencies(); });
+
     if (renameWidth > MaxWidth)
         fatal("renameWidth (%d) is larger than compiled limit (%d),\n"
              "\tincrease MaxWidth in src/cpu/o3/limits.hh\n",
@@ -786,11 +790,6 @@ Rename::renameInsts(ThreadID tid)
 
     instsInProgress[tid] += renamed_insts;
     stats.renamedInsts += renamed_insts;
-    
-    // Preproject stat collection 
-    // if (curTick() > xx999950000) { writeDistDependencies(); }
-    // if (curTick() > 99999999500) { writeDistDependencies(); } // lbm 100B
-    // if (curTick() > 99999950000) { writeDistDependencies(); } // tick limit
 
     // If we wrote to the time buffer, record this.
     if (toIEWIndex) {
