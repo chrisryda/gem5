@@ -1098,10 +1098,18 @@ IEW::dispatchInsts(ThreadID tid)
 
         if (add_to_iq) {
             instQueue.insert(inst);
-            if (inst->isInDeltaIQ()) {
-                toRename->iewInfo[tid].dispatchedToDIQ++;
-            } else if (inst->isReservedForDIQ()) {
-                toRename->iewInfo[tid].dispatchedFromDIQToIQ++;
+            if (inst->isReservedForDIQ()) {
+                if (inst->isInDeltaIQ()) {
+                    toRename->iewInfo[tid].dispatchedToDIQ++;
+                } else {
+                    toRename->iewInfo[tid].dispatchedFromDIQToIQ++;
+                }
+            } else if (inst->isInDeltaIQ()) {
+                // Bypassed to DIQ without a rename reservation (A2 path).
+                // Don't touch dispatchedToDIQ — rename never incremented
+                // deltaInstsInProgress for this inst. Count separately so
+                // calcFreeIQEntries treats this as a DIQ dispatch, not IQ.
+                toRename->iewInfo[tid].bypassedToDIQ++;
             }
         }
 

@@ -1301,7 +1301,8 @@ Rename::calcFreeIQEntries(ThreadID tid)
 {
     // Only non-delta in-flight instructions will consume IQ slots.
     int dispatched = fromIEW->iewInfo[tid].dispatched;
-    int dispatchedDIQ = fromIEW->iewInfo[tid].dispatchedToDIQ;
+    int dispatchedDIQ = fromIEW->iewInfo[tid].dispatchedToDIQ
+                      + fromIEW->iewInfo[tid].bypassedToDIQ;
     int in_flight_iq = (instsInProgress[tid] - deltaInstsInProgress[tid]) - (dispatched - dispatchedDIQ);
     return (int)freeEntries[tid].iqEntries - in_flight_iq;
 }

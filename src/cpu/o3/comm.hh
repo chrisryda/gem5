@@ -148,6 +148,7 @@ struct TimeStruct
         unsigned dispatched = 0;
         unsigned dispatchedToDIQ = 0;
         unsigned dispatchedFromDIQToIQ = 0;
+        unsigned bypassedToDIQ = 0;
         bool usedIQ = false;
         bool usedLSQ = false;
     };
