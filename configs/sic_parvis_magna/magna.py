@@ -1,5 +1,6 @@
 import os
 import argparse
+from datetime import datetime
 from sic_parvis import Magna, MagnaOpus, SuperMagnaOpus, MagnaOpusSwitchableProcessor, SuperMagnaOpusSwitchableProcessor, IceLakeCacheHierarchy
 
 import m5
@@ -152,14 +153,81 @@ match binary:
         # binary_args = ["bwaves_1"]
         binary_args = []
         stdin_path = f"{test_dir}/603.bwaves_s/bwaves_1.in"
+    case "cam4_s": #src and data folders copied from 527.cam4_r
+        binary_path = f"{test_dir}/627.cam4_s/cam4_s"
+        binary_args = []
+        cwd_path = f"{test_dir}/627.cam4_s/data/refspeed/input"
+    case "roms_s": #src and data folders copied from 554.roms_r
+        binary_path = f"{test_dir}/654.roms_s/sroms"
+        binary_args = []
+        stdin_path = f"{test_dir}/654.roms_s/data/refspeed/input/ocean_benchmark3.in.x"
+        cwd_path = f"{test_dir}/654.roms_s/data/refspeed/input"
+    case "pop2_s":
+        binary_path = f"{test_dir}/628.pop2_s/speed_pop2"
+        binary_args = []
+        cwd_path = f"{test_dir}/628.pop2_s/data/refspeed/input"
+    case "wrf_s": # src and data folders copied from 521.wrf_r
+        binary_path = f"{test_dir}/621.wrf_s/wrf_s"
+        binary_args = []
+        cwd_path = f"{test_dir}/621.wrf_s/data/refspeed/input"
+    case "omnetpp_s": # src and data copied from 520.omnetpp_r, refrate input only
+        binary_path = f"{test_dir}/620.omnetpp_s/omnetpp_s"
+        binary_args = ["-c", "General", "-r", "0", "omnetpp.ini"]
+        cwd_path = f"{test_dir}/620.omnetpp_s/data/refrate/input"
+    case "xalancbmk_s": # src and data copied from 523.xalancbmk_r, refrate input only
+        binary_path = f"{test_dir}/623.xalancbmk_s/xalancbmk_s"
+        binary_args = ["-v", "t5.xml", "xalanc.xsl"]
+        cwd_path = f"{test_dir}/623.xalancbmk_s/data/refrate/input"
+    case "imagick_s": # src and data folders copied from 538.imagick_r
+        binary_path = f"{test_dir}/638.imagick_s/imagick_s"
+        binary_args = [
+            "-limit", "disk", "0",
+            "refspeed_input.tga",
+            "-resize", "817%",
+            "-rotate", "-2.76",
+            "-shave", "540x375",
+            "-alpha", "remove",
+            "-auto-level",
+            "-contrast-stretch", "1x1%",
+            "-colorspace", "Lab",
+            "-channel", "R",
+            "-equalize",
+            "+channel",
+            "-colorspace", "sRGB",
+            "-define", "histogram:unique-colors=false",
+            "-adaptive-blur", "0x5",
+            "-despeckle",
+            "-auto-gamma",
+            "-adaptive-sharpen", "55",
+            "-enhance",
+            "-brightness-contrast", "10x10",
+            "-resize", "30%",
+            "refspeed_output.tga",
+        ]
+        cwd_path = f"{test_dir}/638.imagick_s/data/refspeed/input"
+    case "xz_s": # src and data folders copied from 557.xz_r
+        binary_path = f"{test_dir}/657.xz_s/xz_s"
+        binary_args = [
+            "cpu2006docs.tar.xz",
+            "6643",
+            "055ce243071129412e9dd0b3b69a21654033a9b723d874b2015c774fac1553d9713be561ca86f74e4f16f22e664fc17a79f30caa5ad2c04fbc447549c2810fae",
+            "1036078272",
+            "1111795472",
+            "4",
+        ]
+        cwd_path = f"{test_dir}/657.xz_s/data/refspeed/input"
+    case "cactuBSSN_s": # src and data folders copied from 507.cactuBSSN_r
+        binary_path = f"{test_dir}/607.cactuBSSN_s/cactuBSSN_s"
+        binary_args = ["spec_ref.par"]
+        cwd_path = f"{test_dir}/607.cactuBSSN_s/data/refspeed/input"
 
 board.set_se_binary_workload(
     binary=BinaryResource(binary_path),
     arguments=binary_args,
     stdin_file=BinaryResource(stdin_path) if stdin_path else None,
 )
+proc = board.get_processor()
 if cwd_path:
-    proc = board.get_processor()
     cores = proc._all_cores() if hasattr(proc, "_all_cores") else proc.get_cores()
     for core in cores:
         core.get_simobject().workload[0].cwd = cwd_path
@@ -167,24 +235,24 @@ simulator = Simulator(board=board)
 print(f"Running benchmark {binary} for {sim_desc} with {proc_name}, IQ = {args.iq_size} and DIQ = {args.diq_size}\n")
 
 if warmup_insts > 0:
-    print(f"\n[Phase 1] Fast-forwarding {warmup_insts:,} instructions in ATOMIC mode...\n")
+    print(f"\n[{datetime.now():%b %d %H:%M:%S}] [Phase 1] Fast-forwarding {warmup_insts:,} instructions in ATOMIC mode...\n")
     simulator.schedule_max_insts(warmup_insts)
     simulator.run()
     simulator.switch_processor()
-    print(f"[Phase 1] Done at {simulator.get_current_tick():,} ticks. Switched to O3.\n")
+    print(f"[{datetime.now():%b %d %H:%M:%S}] [Phase 1] Done at {simulator.get_current_tick():,} ticks. Switched to O3.\n")
 
     if o3_warmup_insts > 0:
-        print(f"[Phase 2] Running {o3_warmup_insts:,} instructions on O3 (no stats)...\n")
+        print(f"[{datetime.now():%b %d %H:%M:%S}] [Phase 2] Running {o3_warmup_insts:,} instructions on O3 (no stats)...\n")
         simulator.schedule_max_insts(o3_warmup_insts)
         simulator.run()
-        print(f"[Phase 2] Done at {simulator.get_current_tick():,} ticks.\n")
+        print(f"[{datetime.now():%b %d %H:%M:%S}] [Phase 2] Done at {simulator.get_current_tick():,} ticks.\n")
     else:
-        print(f"[Phase 2] Skipped, no O3 warmup specified, skipping to measurement phase.\n")
+        print(f"[{datetime.now():%b %d %H:%M:%S}] [Phase 2] Skipped, no O3 warmup specified, skipping to measurement phase.\n")
 
     m5.stats.reset()
-    print(f"[Phase 3] Starting measurement for {sim_desc}...\n")
+    print(f"[{datetime.now():%b %d %H:%M:%S}] [Phase 3] Starting measurement for {sim_desc}...\n")
     simulator.run(num_ticks)
 else:
     simulator.run(num_ticks)
 
-print(f"{binary} ran a total of {simulator.get_current_tick()} simulated ticks on {proc_name} with IQ = {args.iq_size} and DIQ = {args.diq_size}")
+print(f"[{datetime.now():%b %d %H:%M:%S}] {binary} ran a total of {simulator.get_current_tick():,} simulated ticks on {proc_name} with IQ = {args.iq_size} and DIQ = {args.diq_size}")
