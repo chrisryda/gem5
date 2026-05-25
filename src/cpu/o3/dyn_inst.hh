@@ -655,7 +655,7 @@ class DynInst : public ExecContext, public RefCounted
         }
     }
 
-    /** SetsAce register idx as dependent with the provided fields */
+    /** Sets source register idx as dependent with the provided fields */
     void setDeltaDep(int idx, int64_t seqNum, int64_t cycleDist)
     {
         deltaVec.at(idx).dependent = true;
