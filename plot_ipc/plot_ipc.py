@@ -16,12 +16,19 @@ PLOT_DIR     = Path(__file__).parent
 BENCHMARK_ORDER = [
     "whetstone", "mcf_s", "gcc_s", "lbm_s", 
     "exchange2_s", "fotonik3d_s", "nab_s", "x264_s", 
-    "perlbench_s", "leela_s", "deepsjeng_s", "bwaves_s"
+    "perlbench_s", "leela_s", "deepsjeng_s", "bwaves_s",
+    "cam4_s", "roms_s", "pop2_s", "wrf_s", 
+    "omnetpp_s", "xalancbmk_s", "imagick_s", "xz_s",
+    "cactuBSSN_s"
 ]
 BENCH_LABELS    = {
     "whetstone": "Whetstone", "mcf_s": "mcf_s", "gcc_s": "gcc_s", "lbm_s": "lbm_s",
     "exchange2_s": "exchange2_s", "fotonik3d_s": "fotonik3d_s", "nab_s": "nab_s", "x264_s": "x264_s",
     "perlbench_s": "perlbench_s", "leela_s": "leela_s", "deepsjeng_s": "deepsjeng_s", "bwaves_s": "bwaves_s",
+    "cam4_s": "cam4_s", "roms_s": "roms_s", "pop2_s": "pop2_s", "wrf_s": "wrf_s",
+    "omnetpp_s": "omnetpp_s", "xalancbmk_s": "xalancbmk_s", "imagick_s": "imagick_s", "xz_s": "xz_s",
+    "cactuBSSN_s": "cactuBSSN_s"
+    
 }
 
 # Minimum IPC range before colour scaling is considered meaningful.
@@ -285,6 +292,77 @@ def plot_table(records):
     return figs
 
 # ---------------------------------------------------------------------------
+# Budget table — one figure per benchmark
+#
+# columns : total IQ+DIQ budget  (8, 16, 32, 64, 96, 128, 160, …)
+# rows    : DIQ size within that budget
+# cells   : IPC, color-coded RdYlGn per benchmark (N/A where combo absent)
+#
+# Designed for budget-constrained sweeps where IQ+DIQ = const per curve.
+# ---------------------------------------------------------------------------
+def plot_bable(records):
+    data      = {(r["iq"] + r["diq"], r["diq"], r["benchmark"]): r["ipc"] for r in records}
+    ctx_map   = {r["iq"] + r["diq"]: r["ctx"] for r in records}
+    budgets   = sorted(set(r["iq"] + r["diq"] for r in records))
+    diq_sizes = sorted(set(r["diq"] for r in records))
+
+    cmap     = plt.cm.RdYlGn
+    na_color = [0.88, 0.88, 0.88, 1.0]
+
+    figs = []
+    for bench in _benchmarks(records):
+        present = [data[(b, d, bench)] for b in budgets for d in diq_sizes if (b, d, bench) in data]
+        vmin, vmax = min(present), max(present)
+        meaningful = (vmax - vmin) >= COLOR_MIN_RANGE
+
+        cell_text, cell_colors = [], []
+        for diq in diq_sizes:
+            row_text, row_color = [], []
+            for budget in budgets:
+                val = data.get((budget, diq, bench))
+                if val is None:
+                    row_text.append("N/A")
+                    row_color.append(na_color)
+                else:
+                    row_text.append(f"{val:.3f}")
+                    norm = (val - vmin) / (vmax - vmin) if meaningful else 0.5
+                    row_color.append(list(cmap(norm)))
+            cell_text.append(row_text)
+            cell_colors.append(row_color)
+
+        n_rows = len(diq_sizes) + 1
+        n_cols = len(budgets) + 1
+        fig, ax = plt.subplots(figsize=(
+            max(5, n_cols * 0.70),
+            max(2, n_rows * 0.32 + 0.9),
+        ))
+        ax.axis("off")
+
+        tbl = ax.table(
+            cellText=cell_text,
+            cellColours=cell_colors,
+            rowLabels=[str(d) for d in diq_sizes],
+            colLabels=[str(b) for b in budgets],
+            bbox=[0, 0, 1, 1],
+        )
+        tbl.auto_set_font_size(False)
+        tbl.set_fontsize(9)
+
+        ax.text(0.0, 1.0, "DIQ \\ Budget", transform=ax.transAxes, fontsize=8, va="bottom", ha="left", style="italic")
+
+        unique_ctxs = sorted(set(ctx_map.values()))
+        ctx_str = "  ".join(unique_ctxs)
+        fig.suptitle(
+            f"{BENCH_LABELS.get(bench, bench)}\n{ctx_str}\nIPC range {vmin:.3f} - {vmax:.3f} ({100 * (vmax - vmin) / vmin:.1f}%)",
+            fontsize=11,
+        )
+        fig.tight_layout(rect=[0, 0, 1, 0.95])
+        figs.append((bench, fig))
+
+    return figs
+
+
+# ---------------------------------------------------------------------------
 # Downgrade bar chart — one figure, all benchmarks + GeoMean
 # ---------------------------------------------------------------------------
 def plot_downgrade(records, baseline_iq=None):
@@ -490,7 +568,7 @@ def plot_downgrade_split(records, baseline_iq=None):
 #
 # This answers: "for the same total IQ budget, does a different split help?"
 # ---------------------------------------------------------------------------
-def plot_budget_groups(records, baseline_iq=None, bucket_size=10):
+def plot_budget_groups(records, baseline_iq=None):
     data       = {(r["iq"], r["diq"], r["ctx"], r["benchmark"]): r["ipc"] for r in records}
     configs    = sorted(set((r["iq"], r["diq"], r["ctx"]) for r in records))
     benchmarks = _benchmarks(records)
@@ -511,7 +589,7 @@ def plot_budget_groups(records, baseline_iq=None, bucket_size=10):
     bucket_map = {}
     for cfg in configs:
         iq, diq, _ = cfg
-        bucket = ((iq + diq) // bucket_size) * bucket_size
+        bucket = iq + diq  # exact budget value
         bucket_map.setdefault(bucket, []).append(cfg)
     sorted_buckets = sorted(bucket_map)
     for b in sorted_buckets:
@@ -563,7 +641,7 @@ def plot_budget_groups(records, baseline_iq=None, bucket_size=10):
                         fontsize=6, rotation=90)
         ax.axhline(0, color="black", linewidth=0.8)
         ax.set_xticks(list(tick_x.values()))
-        ax.set_xticklabels([f"{b}s" for b in sorted_buckets], rotation=0, ha="center", fontsize=8)
+        ax.set_xticklabels([str(b) for b in sorted_buckets], rotation=0, ha="center", fontsize=8)
         ax.set_xlabel("IQ + DIQ budget  (largest→smallest base IQ, i.e. smallest→largest DIQ, left→right within group)")
         ax.set_ylabel("IPC Downgrade vs Baseline")
         ax.yaxis.set_major_formatter(mticker.PercentFormatter())
@@ -737,6 +815,7 @@ if __name__ == "__main__":
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--bar",       dest="mode", action="store_const", const="bar",       help="Grouped bar chart (good for small config sets)")
     mode.add_argument("--table",     dest="mode", action="store_const", const="table",     help="Heatmap table: rows = DIQ, columns = IQ")
+    mode.add_argument("--bable",     dest="mode", action="store_const", const="bable",     help="Budget table: rows = DIQ size, columns = total IQ+DIQ budget")
     mode.add_argument("--downgrade", dest="mode", action="store_const", const="downgrade", help="Relative IPC downgrade vs baseline IQ, all benchmarks in one figure")
     mode.add_argument("--split",     dest="mode", action="store_const", const="split",     help="Like --downgrade but one figure per benchmark + GeoMean (5 figures total)")
     mode.add_argument("--budget",    dest="mode", action="store_const", const="budget",    help="Per-benchmark figures grouped by total IQ+DIQ budget decade, bars colored by base IQ")
@@ -794,6 +873,9 @@ if __name__ == "__main__":
         elif args.mode == "table":
             figs = plot_table(records)
             mode_tag = "table"
+        elif args.mode == "bable":
+            figs = plot_bable(records)
+            mode_tag = "bable"
         else:
             figs = plot_lines(records)
             mode_tag = "lines"
