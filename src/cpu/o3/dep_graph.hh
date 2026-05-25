@@ -115,9 +115,6 @@ class DependencyGraph
     /** Checks if there are any dependents on a specific register. */
     bool empty(RegIndex idx) const { return !dependGraph[idx].next; }
 
-    /** Returns the head producing instruction for a given register. */
-    const DynInstPtr &instHead(RegIndex idx) const { return dependGraph[idx].inst; }
-
     /** Debugging function to dump out the dependency graph.
      */
     void dump();

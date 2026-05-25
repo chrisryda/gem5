@@ -45,7 +45,7 @@
 
 #include "cpu/o3/iew.hh"
 
-#include <deque>
+#include <queue>
 
 #include "cpu/checker/cpu.hh"
 #include "cpu/o3/dyn_inst.hh"
@@ -439,7 +439,7 @@ IEW::squash(ThreadID tid)
 
         toRename->iewInfo[tid].dispatched++;
 
-        skidBuffer[tid].pop_front();
+        skidBuffer[tid].pop();
     }
 
     emptyRenameInsts(tid);
@@ -601,13 +601,13 @@ IEW::skidInsert(ThreadID tid)
     while (!insts[tid].empty()) {
         inst = insts[tid].front();
 
-        insts[tid].pop_front();
+        insts[tid].pop();
 
         DPRINTF(IEW,"[tid:%i] Inserting [sn:%lli] PC:%s into "
                 "dispatch skidBuffer %i\n",tid, inst->seqNum,
                 inst->pcState(),tid);
 
-        skidBuffer[tid].push_back(inst);
+        skidBuffer[tid].push(inst);
     }
 
     assert(skidBuffer[tid].size() <= skidBufferMax &&
@@ -762,7 +762,7 @@ IEW::sortInsts()
         assert(insts[tid].empty());
 #endif
     for (int i = 0; i < insts_from_rename; ++i) {
-        insts[fromRename->insts[i]->threadNumber].push_back(fromRename->insts[i]);
+        insts[fromRename->insts[i]->threadNumber].push(fromRename->insts[i]);
     }
 }
 
@@ -783,7 +783,7 @@ IEW::emptyRenameInsts(ThreadID tid)
 
         toRename->iewInfo[tid].dispatched++;
 
-        insts[tid].pop_front();
+        insts[tid].pop();
     }
 }
 
@@ -877,7 +877,7 @@ IEW::dispatchInsts(ThreadID tid)
 {
     // Obtain instructions from skid buffer if unblocking, or queue from rename
     // otherwise.
-    std::deque<DynInstPtr> &insts_to_dispatch =
+    std::queue<DynInstPtr> &insts_to_dispatch =
         (dispatchStatus[tid] == Unblocking || dispatchStatus[tid] == Blocked) ?
         skidBuffer[tid] : insts[tid];
 
@@ -886,20 +886,14 @@ IEW::dispatchInsts(ThreadID tid)
     DynInstPtr inst;
     bool add_to_iq = false;
     int dis_num_inst = 0;
-    bool iq_blocked = false;
-    // When Blocked+IQ-full+DIQ-not-full, scan past non-dispatchable
-    // instructions to find delta candidates whose producers are already
-    // dispatched. Each skipped slot still consumes one dispatch port.
-    const bool skip_on_iq_full = (dispatchStatus[tid] == Blocked);
 
-    auto it = insts_to_dispatch.begin();
-
-    while (it != insts_to_dispatch.end() &&
-           dis_num_inst < insts_to_add &&
-           dis_num_inst < dispatchWidth)
+    // Loop through the instructions, putting them in the instruction
+    // queue.
+    for ( ; dis_num_inst < insts_to_add &&
+              dis_num_inst < dispatchWidth;
+          ++dis_num_inst)
     {
-        inst = *it;
-        add_to_iq = false;
+        inst = insts_to_dispatch.front();
 
         if (dispatchStatus[tid] == Unblocking) {
             DPRINTF(IEW, "[tid:%i] Issue: Examining instruction from skid "
@@ -924,8 +918,8 @@ IEW::dispatchInsts(ThreadID tid)
 
             ++iewStats.dispSquashedInsts;
 
-            it = insts_to_dispatch.erase(it);
-            
+            insts_to_dispatch.pop();
+
             //Tell Rename That An Instruction has been processed
             if (inst->isLoad()) {
                 toRename->iewInfo[tid].dispatchedToLQ++;
@@ -935,30 +929,13 @@ IEW::dispatchInsts(ThreadID tid)
             }
 
             toRename->iewInfo[tid].dispatched++;
-            ++dis_num_inst;
             continue;
         }
 
-        // Check for IQ full.
+        // Check for full conditions.
         if (instQueue.isFull(tid)) {
-            // A delta candidate can bypass into the DIQ only if its
-            // producer is already in the dependGraph (dispatched). If
-            // the producer is still in the skidBuffer behind a stalled
-            // non-delta instruction, dispatching the consumer first
-            // would break the wakeup chain.
-            bool delta_bypassable = inst->isDeltaCand() &&
-                                    !instQueue.isDeltaFull(tid) &&
-                                    instQueue.isDeltaProducerDispatched(inst) &&
-                                    !inst->isMemRef();
-            if (!delta_bypassable) 
-            {
-                if (skip_on_iq_full) 
-                {
-                    iq_blocked = true;
-                    ++it;
-                    ++dis_num_inst;
-                    continue;
-                }
+            // Allow delta candidates to bypass a full IQ into the DIQ.
+            if (!inst->isDeltaCand() || instQueue.isDeltaFull(tid)) {
                 DPRINTF(IEW, "[tid:%i] Issue: IQ has become full.\n", tid);
 
                 block(tid);
@@ -966,8 +943,8 @@ IEW::dispatchInsts(ThreadID tid)
                 ++iewStats.iqFullEvents;
                 break;
             }
-            // Delta candidate with DIQ space and producer dispatched:
-            // fall through to insert(), which routes it to the DIQ.
+            // Delta candidate with DIQ space: fall through to insert(),
+            // which will route it to the DIQ without touching the IQ.
         }
 
         // Check LSQ if inst is LD/ST
@@ -1113,11 +1090,9 @@ IEW::dispatchInsts(ThreadID tid)
             }
         }
 
-        it = insts_to_dispatch.erase(it);
+        insts_to_dispatch.pop();
 
         toRename->iewInfo[tid].dispatched++;
-
-        ++dis_num_inst;
 
         ++iewStats.dispatchedInsts;
 
@@ -1125,12 +1100,6 @@ IEW::dispatchInsts(ThreadID tid)
         inst->dispatchTick = curTick() - inst->fetchTick;
 #endif
         ppDispatch->notify(inst);
-    }
-
-    if (iq_blocked) {
-        block(tid);
-        toRename->iewUnblock[tid] = false;
-        ++iewStats.iqFullEvents;
     }
 
     if (!insts_to_dispatch.empty()) {

@@ -41,7 +41,7 @@
 #ifndef __CPU_O3_IEW_HH__
 #define __CPU_O3_IEW_HH__
 
-#include <deque>
+#include <queue>
 #include <set>
 
 #include "base/statistics.hh"
@@ -333,10 +333,10 @@ class IEW
     TimeBuffer<IEWStruct>::wire toCommit;
 
     /** Queue of all instructions coming from rename this cycle. */
-    std::deque<DynInstPtr> insts[MaxThreads];
+    std::queue<DynInstPtr> insts[MaxThreads];
 
     /** Skid buffer between rename and IEW. */
-    std::deque<DynInstPtr> skidBuffer[MaxThreads];
+    std::queue<DynInstPtr> skidBuffer[MaxThreads];
 
     /** Scoreboard pointer. */
     Scoreboard* scoreboard;

@@ -187,10 +187,6 @@ class InstructionQueue
     /** Returns whether or not the DIQ is full for a specific thread. */
     bool isDeltaFull(ThreadID tid);
 
-    /** Returns true if the unready source of a delta candidate has
-     *  its producer already in the dependency graph (i.e., dispatched). */
-    bool isDeltaProducerDispatched(const DynInstPtr &inst) const;
-
     /** Returns if there are any ready instructions in the IQ. */
     bool hasReadyInsts();
 

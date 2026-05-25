@@ -580,14 +580,6 @@ InstructionQueue::isDeltaFull(ThreadID tid)
 }
 
 bool
-InstructionQueue::isDeltaProducerDispatched(const DynInstPtr &inst) const
-{
-    const PhysRegIdPtr src_reg = inst->renamedSrcIdx(inst->getDeltaSrcIdx());
-    if (src_reg->isFixedMapping()) return true;
-    return static_cast<bool>(dependGraph.instHead(src_reg->flatIndex()));
-}
-
-bool
 InstructionQueue::hasReadyInsts()
 {
     if (!listOrder.empty()) {
@@ -655,6 +647,17 @@ InstructionQueue::insert(const DynInstPtr &new_inst)
 
         new_inst->setInIQ();
         new_inst->setInDeltaIQ();
+
+        // If the producer completed while this instruction was stuck in the
+        // skidBuffer (IQ full), the scoreboard fallback at the top of
+        // insert() was skipped (guarded by freeEntries != 0).  Mark the
+        // delta source ready now so addIfReady schedules the instruction
+        // immediately; without this it enters deltaWakeupMap for a wakeup
+        // event that already fired and never executes.
+        if (!d_src_phys->isFixedMapping() &&
+                regScoreboard[d_src_phys->flatIndex()]) {
+            new_inst->markSrcRegReady(d_src_idx);
+        }
 
         // Track in deltaInstList only when the list owns the slot's lifetime:
         // - non-mem insts waiting for wakeup (removed by wakeDependents)
