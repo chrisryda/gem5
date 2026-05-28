@@ -934,8 +934,15 @@ IEW::dispatchInsts(ThreadID tid)
 
         // Check for full conditions.
         if (instQueue.isFull(tid)) {
-            // Allow delta candidates to bypass a full IQ into the DIQ.
-            if (!inst->isDeltaCand() || instQueue.isDeltaFull(tid)) {
+            // Allow delta candidates to bypass a full IQ into the DIQ,
+            // but only for speculative instructions that go through
+            // insert().  Atomics, store-conditionals, non-speculative
+            // instructions, and barriers all require an IQ slot via
+            // insertNonSpec() and cannot use the DIQ bypass path.
+            if (!inst->isDeltaCand() || instQueue.isDeltaFull(tid) ||
+                inst->isAtomic() || inst->isStoreConditional() ||
+                inst->isNonSpeculative() ||
+                inst->isReadBarrier() || inst->isWriteBarrier()) {
                 DPRINTF(IEW, "[tid:%i] Issue: IQ has become full.\n", tid);
 
                 block(tid);
