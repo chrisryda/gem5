@@ -14,22 +14,28 @@ CSV_OUT      = Path(__file__).parent / "iq_sweep_ipc.csv"
 PLOT_DIR     = Path(__file__).parent
 
 BENCHMARK_ORDER = [
-    "whetstone", "mcf_s", "gcc_s", "lbm_s", 
-    "exchange2_s", "fotonik3d_s", "nab_s", "x264_s", 
-    "perlbench_s", "leela_s", "deepsjeng_s", "bwaves_s",
-    "cam4_s", "roms_s", "pop2_s", "wrf_s", 
-    "omnetpp_s", "xalancbmk_s", "imagick_s", "xz_s",
-    "cactuBSSN_s"
+    "whetstone",
+    "perlbench_s",   # 600
+    "gcc_s",         # 602
+    "bwaves_s",      # 603
+    "mcf_s",         # 605
+    "cactuBSSN_s",   # 607
+    "lbm_s",         # 619
+    "omnetpp_s",     # 620
+    "wrf_s",         # 621
+    "xalancbmk_s",   # 623
+    "x264_s",        # 625
+    "cam4_s",        # 627
+    "pop2_s",        # 628
+    "deepsjeng_s",   # 631
+    "imagick_s",     # 638
+    "leela_s",       # 641
+    "nab_s",         # 644
+    "exchange2_s",   # 648
+    "fotonik3d_s",   # 649
+    "roms_s",        # 654
+    "xz_s",          # 657
 ]
-BENCH_LABELS    = {
-    "whetstone": "Whetstone", "mcf_s": "mcf_s", "gcc_s": "gcc_s", "lbm_s": "lbm_s",
-    "exchange2_s": "exchange2_s", "fotonik3d_s": "fotonik3d_s", "nab_s": "nab_s", "x264_s": "x264_s",
-    "perlbench_s": "perlbench_s", "leela_s": "leela_s", "deepsjeng_s": "deepsjeng_s", "bwaves_s": "bwaves_s",
-    "cam4_s": "cam4_s", "roms_s": "roms_s", "pop2_s": "pop2_s", "wrf_s": "wrf_s",
-    "omnetpp_s": "omnetpp_s", "xalancbmk_s": "xalancbmk_s", "imagick_s": "imagick_s", "xz_s": "xz_s",
-    "cactuBSSN_s": "cactuBSSN_s"
-    
-}
 
 # Minimum IPC range before colour scaling is considered meaningful.
 # Values within this band are treated as identical (mapped to neutral 0.5).
@@ -145,7 +151,7 @@ def plot_lines(records):
                         ha="center", va="bottom", rotation=90, fontsize=5)
 
         ctxs_str = ", ".join(sorted(set(ctx_map.values())))
-        ax.set_title(f"{BENCH_LABELS.get(bench, bench)}  ({ctxs_str})" if ctxs_str else BENCH_LABELS.get(bench, bench))
+        ax.set_title(f"{bench}  ({ctxs_str})" if ctxs_str else bench)
         ax.set_xlabel("IQ size")
         ax.set_ylabel("IPC")
         ax.set_xticks(iq_sizes)
@@ -219,7 +225,7 @@ def plot_bars(records, baseline_cfg="160/0", additive_cfg="120/80"):
 
         unique_ctxs = sorted(set(ctx_map.values()))
         ctx_str = "  ".join(unique_ctxs)
-        fig.suptitle(f"{BENCH_LABELS.get(bench, bench)}  {ctx_str}" if ctx_str else BENCH_LABELS.get(bench, bench), fontsize=13)
+        fig.suptitle(f"{bench}  {ctx_str}" if ctx_str else bench, fontsize=13)
         fig.tight_layout()
         figs.append((bench, fig))
 
@@ -283,7 +289,7 @@ def plot_table(records):
         unique_ctxs = sorted(set(ctx_map.values()))
         ctx_str = "  ".join(unique_ctxs)
         fig.suptitle(
-            f"{BENCH_LABELS.get(bench, bench)}\n{ctx_str}\nIPC range {vmin:.3f} - {vmax:.3f} ({100 * (vmax - vmin) / vmin:.1f}%)",
+            f"{bench}\n{ctx_str}\nIPC range {vmin:.3f} - {vmax:.3f} ({100 * (vmax - vmin) / vmin:.1f}%)",
             fontsize=11,
         )
         fig.tight_layout(rect=[0, 0, 1, 0.95])
@@ -353,7 +359,7 @@ def plot_bable(records):
         unique_ctxs = sorted(set(ctx_map.values()))
         ctx_str = "  ".join(unique_ctxs)
         fig.suptitle(
-            f"{BENCH_LABELS.get(bench, bench)}\n{ctx_str}\nIPC range {vmin:.3f} - {vmax:.3f} ({100 * (vmax - vmin) / vmin:.1f}%)",
+            f"{bench}\n{ctx_str}\nIPC range {vmin:.3f} - {vmax:.3f} ({100 * (vmax - vmin) / vmin:.1f}%)",
             fontsize=11,
         )
         fig.tight_layout(rect=[0, 0, 1, 0.95])
@@ -451,7 +457,7 @@ def plot_downgrade(records, baseline_iq=None):
     ax.axhline(0, color="black", linewidth=0.8)
     ax.set_xticks(np.append(x_bench, x_geo))
     ax.set_xticklabels(
-        [BENCH_LABELS.get(b, b) for b in benchmarks] + ["GeoMean"],
+        [b for b in benchmarks] + ["GeoMean"],
         rotation=0, ha="center", fontsize=9,
     )
     ax.set_xlim(0.3, len(benchmarks) + 1.7)
@@ -547,7 +553,7 @@ def plot_downgrade_split(records, baseline_iq=None):
     figs = []
     for bench in benchmarks:
         vals = [(1 - ratios.get((cfg, bench), float("nan"))) * 100 for cfg in configs]
-        figs.append((bench, _make_bar_fig(vals, BENCH_LABELS.get(bench, bench))))
+        figs.append((bench, _make_bar_fig(vals, bench)))
 
     geo_vals = []
     for cfg in configs:
@@ -662,7 +668,7 @@ def plot_budget_groups(records, baseline_iq=None):
     figs = []
     for bench in benchmarks:
         vals = {cfg: (1 - ratios.get((cfg, bench), float("nan"))) * 100 for cfg in configs}
-        figs.append((bench, _make_fig(vals, BENCH_LABELS.get(bench, bench))))
+        figs.append((bench, _make_fig(vals, bench)))
 
     geo_vals = {}
     for cfg in configs:
@@ -795,7 +801,7 @@ def plot_iq_groups(records, baseline_iq=None):
     figs = []
     for bench in benchmarks:
         vals = {cfg: (1 - ratios.get((cfg, bench), float("nan"))) * 100 for cfg in configs}
-        figs.append((bench, _make_fig(vals, BENCH_LABELS.get(bench, bench))))
+        figs.append((bench, _make_fig(vals, bench)))
 
     geo_vals = {}
     for cfg in configs:
