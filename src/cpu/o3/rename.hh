@@ -384,6 +384,12 @@ class Rename
      */
     std::unordered_map<uint64_t, int> distDependecies;
 
+    /** Absolute path for the dependency-distance CSV, resolved at construction
+     * time. Captured up front because some workloads change gem5's host cwd
+     * during the run, which would break a relative path resolved at exit.
+     */
+    std::string distDepPath;
+
     /** Count of instructions in progress that have been sent off to the IQ
      * and ROB, but are not yet included in their occupancy counts.
      */
@@ -562,6 +568,14 @@ class Rename
         statistics::Scalar intReturned;
         /** Number of registers freed and written back to floating point free list*/
         statistics::Scalar fpReturned;
+        /** Source lookups whose producer was found in tsRegRename (outer cond). */
+        statistics::Scalar deltaOuterMatch;
+        /** Source lookups recorded into distDependecies (inner cond passed). */
+        statistics::Scalar deltaInnerRecord;
+        /** Outer-matched lookups skipped because producer already ready in scoreboard. */
+        statistics::Scalar deltaSkipScoreboardReady;
+        /** Outer-matched lookups skipped because inst's src regs were already renamed. */
+        statistics::Scalar deltaSkipSrcRenamed;
     } stats;
 };
 

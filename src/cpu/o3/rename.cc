@@ -42,6 +42,7 @@
 #include "cpu/o3/rename.hh"
 
 #include <list>
+#include <cstdlib>
 
 #include "base/output.hh"
 #include "cpu/o3/cpu.hh"
@@ -70,8 +71,19 @@ Rename::Rename(CPU *_cpu, const BaseO3CPUParams &params)
       numThreads(params.numThreads),
       stats(_cpu)
 {
-    if (params.numIQEntries == 160 && params.numDeltaIQEntries == 0)
+    if (params.numIQEntries == 160 && params.numDeltaIQEntries == 0) {
+        // Resolve the CSV path to an absolute path now, while the host cwd is
+        // still the launch directory. The file is written from an exit
+        // callback, by which point some workloads (e.g. omnetpp) have changed
+        // gem5's host cwd, so a relative path would no longer resolve.
+        if (char *abs = realpath(simout.directory().c_str(), nullptr)) {
+            distDepPath = std::string(abs) + "/dist_dependencies.csv";
+            free(abs);
+        } else {
+            distDepPath = simout.resolve("dist_dependencies.csv");
+        }
         registerExitCallback([this]() { writeDistDependencies(); });
+    }
 
     if (renameWidth > MaxWidth)
         fatal("renameWidth (%d) is larger than compiled limit (%d),\n"
@@ -156,7 +168,15 @@ Rename::RenameStats::RenameStats(statistics::Group *parent)
       ADD_STAT(intReturned, statistics::units::Count::get(),
                "count of registers freed and written back to integer free list"),
       ADD_STAT(fpReturned, statistics::units::Count::get(),
-               "count of registers freed and written back to floating point free list")
+               "count of registers freed and written back to floating point free list"),
+      ADD_STAT(deltaOuterMatch, statistics::units::Count::get(),
+               "source lookups whose producer was found in tsRegRename (outer cond)"),
+      ADD_STAT(deltaInnerRecord, statistics::units::Count::get(),
+               "source lookups recorded into distDependecies (inner cond passed)"),
+      ADD_STAT(deltaSkipScoreboardReady, statistics::units::Count::get(),
+               "outer-matched lookups skipped because producer already ready in scoreboard"),
+      ADD_STAT(deltaSkipSrcRenamed, statistics::units::Count::get(),
+               "outer-matched lookups skipped because inst's src regs were already renamed")
 
 {
     squashCycles.prereq(squashCycles);
@@ -191,6 +211,11 @@ Rename::RenameStats::RenameStats(statistics::Group *parent)
 
     intReturned.prereq(intReturned);
     fpReturned.prereq(fpReturned);
+
+    deltaOuterMatch.prereq(deltaOuterMatch);
+    deltaInnerRecord.prereq(deltaInnerRecord);
+    deltaSkipScoreboardReady.prereq(deltaSkipScoreboardReady);
+    deltaSkipSrcRenamed.prereq(deltaSkipSrcRenamed);
 }
 
 void
@@ -1113,6 +1138,11 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
 
         inst->renameSrcReg(src_idx, renamed_reg);
 
+        // Cache the readiness once: renamed_reg is fixed for this iteration and
+        // the scoreboard is not modified here, so every getReg(renamed_reg)
+        // below returns the same value.
+        const bool regReady = scoreboard->getReg(renamed_reg);
+
         Tick t = curTick();
         uint64_t curCycle = uint64_t(cpu->ticksToCycles(t));
         uint64_t delta;
@@ -1126,14 +1156,21 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
         {
             delta = curCycle - ts_it->second;
 
-            if (!scoreboard->getReg(renamed_reg) && !inst->isSrcRegsRenamed())
+            ++stats.deltaOuterMatch;
+            if (!regReady && !inst->isSrcRegsRenamed())
             {
+                ++stats.deltaInnerRecord;
                 auto dd_it = distDependecies.find(delta);
                 if (dd_it != distDependecies.end()) {
                     dd_it->second += 1;
                 } else {
                     distDependecies.insert({delta, 1});
                 }
+            } else {
+                if (regReady)
+                    ++stats.deltaSkipScoreboardReady;
+                if (inst->isSrcRegsRenamed())
+                    ++stats.deltaSkipSrcRenamed;
             }
 
             DPRINTF(Delta, "RDelta: [tid:%d/%d][c:%" PRIu64 "] Lookup source arch r%d (%s) of instr:%ld [%s  ] returned phys p%i (%s). Renamed %" PRIu64 ", delta = %" PRIu64 "\n",
@@ -1152,7 +1189,7 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
 
             if (hb_it != historyBuffer[tid].end())
             {
-                if (scoreboard->getReg(renamed_reg))
+                if (regReady)
                 {
                     inst->setDeltaNonDep(src_idx, hb_it->instSeqNum, delta);
                     DPRINTF(Delta, "RDelta: Source arch r%d still in history, but phys reg p%i (%s) is ready and no dependency\n\n",
@@ -1167,7 +1204,7 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
                     );
                 }
             } else {
-                if (scoreboard->getReg(renamed_reg))
+                if (regReady)
                 {
                     DPRINTF(Delta, "RDelta: NOT IN HIST, but phys reg p%i (%s) is ready and no dependency\n\n", renamed_reg->index(), renamed_reg->className());
                 } else {
@@ -1177,7 +1214,7 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
         }
 
         // See if the register is ready or not.
-        if (scoreboard->getReg(renamed_reg)) {
+        if (regReady) {
             DPRINTF(Rename,
                     "[tid:%i] "
                     "Register %d (flat: %d) (%s) is ready.\n",
@@ -1607,20 +1644,19 @@ Rename::dumpHistory()
 void
 Rename::writeDistDependencies()
 {
-    if (!distDependecies.empty()) 
-    {
-        std::ofstream csv_file;
-        std::string path = simout.resolve("dist_dependencies.csv");
-        csv_file.open(path);
-        csv_file << "delta,num\n";
-        auto dd_it = distDependecies.begin();
-        while (dd_it != distDependecies.end())
-        {
-            csv_file << dd_it->first << "," << dd_it->second << "\n";
-            dd_it++;
-        }
-        csv_file.close();
+    if (distDependecies.empty())
+        return;
+
+    std::ofstream csv_file(distDepPath);
+    if (!csv_file.is_open()) {
+        warn("Rename: failed to open '%s' to write dependency distances\n",
+             distDepPath);
+        return;
     }
+
+    csv_file << "delta,num\n";
+    for (const auto &dd : distDependecies)
+        csv_file << dd.first << "," << dd.second << "\n";
 }
 
 } // namespace o3
