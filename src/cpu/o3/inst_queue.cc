@@ -233,7 +233,20 @@ InstructionQueue::IQStats::IQStats(CPU *cpu, const unsigned &total_width)
     ADD_STAT(fuBusy, statistics::units::Count::get(), "FU busy when requested"),
     ADD_STAT(fuBusyRate, statistics::units::Rate<
                 statistics::units::Count, statistics::units::Count>::get(),
-             "FU busy rate (busy events/executed inst)")
+             "FU busy rate (busy events/executed inst)"),
+    ADD_STAT(issuesFromIQ, statistics::units::Count::get(),
+             "Number of instructions issued from the regular IQ"),
+    ADD_STAT(issuesFromDIQ, statistics::units::Count::get(),
+             "Number of instructions issued from the delta IQ"),
+    ADD_STAT(diqWakeupEvents, statistics::units::Count::get(),
+             "Producer writebacks that fired any deltaWakeupMap entry "
+             "(IQ payload back-pointer reads in the CACTI energy model)"),
+    ADD_STAT(diqWakeupConsumers, statistics::units::Count::get(),
+             "Total delta consumers woken via deltaWakeupMap (audit only)"),
+    ADD_STAT(camBroadcasts, statistics::units::Count::get(),
+             "Result tag broadcasts that drive the IQ tag CAM, one per "
+             "non-fixed-mapping dest reg written back (HW-faithful "
+             "N_broadcast for the CACTI energy model)")
 {
     instsAdded
         .prereq(instsAdded);
@@ -273,6 +286,21 @@ InstructionQueue::IQStats::IQStats(CPU *cpu, const unsigned &total_width)
 
     squashedNonSpecRemoved
         .prereq(squashedNonSpecRemoved);
+
+    issuesFromIQ
+        .prereq(issuesFromIQ);
+
+    issuesFromDIQ
+        .prereq(issuesFromDIQ);
+
+    diqWakeupEvents
+        .prereq(diqWakeupEvents);
+
+    diqWakeupConsumers
+        .prereq(diqWakeupConsumers);
+
+    camBroadcasts
+        .prereq(camBroadcasts);
 /*
     queueResDist
         .init(Num_OpClasses, 0, 99, 2)
@@ -1011,6 +1039,12 @@ InstructionQueue::scheduleReadyInsts()
             if (issuing_inst->firstIssue == -1)
                 issuing_inst->firstIssue = curTick();
 
+            if (issuing_inst->isInDeltaIQ()) {
+                ++iqStats.issuesFromDIQ;
+            } else {
+                ++iqStats.issuesFromIQ;
+            }
+
             if (!issuing_inst->isMemRef()) {
                 // Memory instructions can not be freed from the IQ until they
                 // complete.
@@ -1171,6 +1205,12 @@ InstructionQueue::wakeDependents(const DynInstPtr &completed_inst)
                 dest_reg->index(),
                 dest_reg->className());
 
+        // This destination register's result tag is driven onto the IQ tag
+        // CAM now (past the fixed-mapping and pinned-write guards above), so
+        // the associative search fires whether or not any entry matches.
+        // Counted per real tag drive -- the HW-faithful N_broadcast.
+        ++iqStats.camBroadcasts;
+
         //Go through the dependency chain, marking the registers as
         //ready within the waiting instructions.
         DynInstPtr dep_inst = dependGraph.pop(dest_reg->flatIndex());
@@ -1204,16 +1244,22 @@ InstructionQueue::wakeDependents(const DynInstPtr &completed_inst)
     DPRINTF(Delta, "IQDelta: Searching deltaWakeupMap for consumers of inst [sn:%llu]\n", completed_inst->seqNum);
     // Direct delta wakeup that replaces CAM broadcast for delta candidates.
     auto delta_it = deltaWakeupMap.find(completed_inst->seqNum);
-    if (delta_it != deltaWakeupMap.end()) 
+    if (delta_it != deltaWakeupMap.end())
     {
+        // Tracks whether this producer woke at least one live (non-squashed)
+        // delta consumer.  Only then does a back-pointer read actually fire
+        // in HW (diqWakeupEvents); a map entry whose consumers were all
+        // squashed has had its DIQ slots invalidated by doSquash() and reads
+        // nothing at writeback.
+        bool woke_live_consumer = false;
         for (DynInstPtr& delta_inst : delta_it->second)
         {
             DPRINTF(Delta,
                 "IQDelta: Found delta dependent inst [sn:%llu] in deltaWakeupMap.\n",
                 delta_inst->seqNum
             );
-            
-            if (!delta_inst->isSquashed()) 
+
+            if (!delta_inst->isSquashed())
             {
                 DPRINTF(Delta,
                     "IQDelta: Waking up delta dependent [sn:%llu] PC %s.\n",
@@ -1238,9 +1284,23 @@ InstructionQueue::wakeDependents(const DynInstPtr &completed_inst)
                 {
                     deltaInstList[delta_inst->threadNumber].remove(delta_inst);
                 }
+
+                // Count only real ready-bit flips: one DIQ-entry back-pointer
+                // read per live consumer woken.  Squashed consumers are
+                // skipped here exactly as squashed regular consumers are
+                // already absent from the dependency graph at writeback.
+                ++dependents;
+                ++iqStats.diqWakeupConsumers;
+                woke_live_consumer = true;
             }
-            ++dependents;
         }
+
+        // A producer-side wakeup event (back-pointer read) only happens if a
+        // live consumer was actually woken.
+        if (woke_live_consumer) {
+            ++iqStats.diqWakeupEvents;
+        }
+
         deltaWakeupMap.erase(delta_it);
     }
 

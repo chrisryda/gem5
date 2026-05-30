@@ -576,6 +576,25 @@ class InstructionQueue
         statistics::Vector fuBusy;
         /** Number of times the FU was busy per instruction issued. */
         statistics::Formula fuBusyRate;
+
+        /** Issues sourced from the regular IQ. */
+        statistics::Scalar issuesFromIQ;
+        /** Issues sourced from the delta IQ. */
+        statistics::Scalar issuesFromDIQ;
+        /** Producer writebacks that fired one or more deltaWakeupMap
+         *  entries (= IQ-payload back-pointer reads in the CACTI model). */
+        statistics::Scalar diqWakeupEvents;
+        /** Total delta consumers woken via deltaWakeupMap (= single-bit
+         *  ready flips on DIQ entries; audit counter, not used in current
+         *  CACTI combinator). */
+        statistics::Scalar diqWakeupConsumers;
+        /** Result tag broadcasts that actually drive the IQ tag CAM: one
+         *  per non-fixed-mapping destination register written back (skips
+         *  zero-register-result writebacks like plain stores, and counts a
+         *  GPR+flags writeback as two). This is the HW-faithful N_broadcast
+         *  for the CACTI energy model, in contrast to the per-writeback
+         *  {int,fp,vec}InstQueueWakeupAccesses counters. */
+        statistics::Scalar camBroadcasts;
     } iqStats;
 
    public:
