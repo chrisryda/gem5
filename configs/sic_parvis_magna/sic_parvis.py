@@ -125,7 +125,8 @@ class Magna(O3CPU):
 
 # Ice Lake-like processor (Table 1 from Doppelganger).
 class MagnaOpusInternalCore(ArmO3CPU):
-    def __init__(self, iq_size=120, diq_size=40):
+    def __init__(self, iq_size=120, diq_size=40,
+                 delta_threshold=2, delta_ignore_threshold=False):
         super().__init__()
         self.fetchWidth = 6   # unspecified in paper -- ??**but likely wider than 5 (decode width) to allow for fetch bubbles**?? --Claude
         self.decodeWidth = 5
@@ -137,6 +138,8 @@ class MagnaOpusInternalCore(ArmO3CPU):
         self.numROBEntries = 352
         self.numIQEntries = iq_size # Doppelganger has 160
         self.numDeltaIQEntries = diq_size
+        self.deltaThreshold = delta_threshold
+        self.deltaIgnoreThreshold = delta_ignore_threshold
         self.LQEntries = 128
         self.SQEntries = 72
 
@@ -148,16 +151,22 @@ class MagnaOpusInternalCore(ArmO3CPU):
 
 
 class MagnaOpusStdCore(BaseCPUCore):
-    def __init__(self, iq_size=120, diq_size=40):
-        core = MagnaOpusInternalCore(iq_size=iq_size, diq_size=diq_size)
+    def __init__(self, iq_size=120, diq_size=40,
+                 delta_threshold=2, delta_ignore_threshold=False):
+        core = MagnaOpusInternalCore(iq_size=iq_size, diq_size=diq_size,
+                                     delta_threshold=delta_threshold,
+                                     delta_ignore_threshold=delta_ignore_threshold)
         super().__init__(core, ISA.ARM)
 
 
 class MagnaOpus(BaseCPUProcessor):
     """Single-core Ice Lake-like processor."""
 
-    def __init__(self, iq_size=120, diq_size=40):
-        super().__init__([MagnaOpusStdCore(iq_size=iq_size, diq_size=diq_size)])
+    def __init__(self, iq_size=120, diq_size=40,
+                 delta_threshold=2, delta_ignore_threshold=False):
+        super().__init__([MagnaOpusStdCore(iq_size=iq_size, diq_size=diq_size,
+                                           delta_threshold=delta_threshold,
+                                           delta_ignore_threshold=delta_ignore_threshold)])
 
 # Over-provisioned FU pool to remove FUs as bottleneck.
 # DefaultFUPool indices: [0]=IntALU, [1]=IntMultDiv, [2]=FP_ALU, [3]=FP_MultDiv,
@@ -181,7 +190,8 @@ class SuperMagnaOpusFUPool(DefaultFUPool):
 
 # Over-provisioned processor: all structural parameters maxed out to isolate the IQ as the sole bottleneck.
 class SuperMagnaOpusInternalCore(ArmO3CPU):
-    def __init__(self, iq_size=120, diq_size=40):
+    def __init__(self, iq_size=120, diq_size=40,
+                 delta_threshold=2, delta_ignore_threshold=False):
         super().__init__()
         self.fetchWidth = 10
         self.decodeWidth = 10
@@ -194,6 +204,8 @@ class SuperMagnaOpusInternalCore(ArmO3CPU):
         self.numROBEntries = 512   # 1024 triggers gem5's instcount <= 1500 assertion
         self.numIQEntries = iq_size
         self.numDeltaIQEntries = diq_size
+        self.deltaThreshold = delta_threshold
+        self.deltaIgnoreThreshold = delta_ignore_threshold
         self.LQEntries = 512
         self.SQEntries = 512
 
@@ -205,16 +217,22 @@ class SuperMagnaOpusInternalCore(ArmO3CPU):
 
 
 class SuperMagnaOpusStdCore(BaseCPUCore):
-    def __init__(self, iq_size=120, diq_size=40):
-        core = SuperMagnaOpusInternalCore(iq_size=iq_size, diq_size=diq_size)
+    def __init__(self, iq_size=120, diq_size=40,
+                 delta_threshold=2, delta_ignore_threshold=False):
+        core = SuperMagnaOpusInternalCore(iq_size=iq_size, diq_size=diq_size,
+                                          delta_threshold=delta_threshold,
+                                          delta_ignore_threshold=delta_ignore_threshold)
         super().__init__(core, ISA.ARM)
 
 
 class SuperMagnaOpus(BaseCPUProcessor):
     """Single-core over-provisioned processor; IQ and DIQ remain configurable."""
 
-    def __init__(self, iq_size=120, diq_size=40):
-        super().__init__([SuperMagnaOpusStdCore(iq_size=iq_size, diq_size=diq_size)])
+    def __init__(self, iq_size=120, diq_size=40,
+                 delta_threshold=2, delta_ignore_threshold=False):
+        super().__init__([SuperMagnaOpusStdCore(iq_size=iq_size, diq_size=diq_size,
+                                                delta_threshold=delta_threshold,
+                                                delta_ignore_threshold=delta_ignore_threshold)])
 
 
 class MagnaOpusSwitchableProcessor(SwitchableProcessor):
@@ -223,7 +241,8 @@ class MagnaOpusSwitchableProcessor(SwitchableProcessor):
     full MagnaOpus O3 core for timing measurement.
     """
 
-    def __init__(self, iq_size=120, diq_size=40):
+    def __init__(self, iq_size=120, diq_size=40,
+                 delta_threshold=2, delta_ignore_threshold=False):
         self._start_key = "start"
         self._switch_key = "switch"
         self._current_is_start = True
@@ -232,6 +251,8 @@ class MagnaOpusSwitchableProcessor(SwitchableProcessor):
         o3_core = MagnaOpusStdCore(
             iq_size=iq_size,
             diq_size=diq_size,
+            delta_threshold=delta_threshold,
+            delta_ignore_threshold=delta_ignore_threshold,
         )
         # cpu_id must match on both sides of the switch or gem5 asserts
         o3_core.get_simobject().cpu_id = atomic_core.get_simobject().cpu_id
@@ -266,7 +287,8 @@ class SuperMagnaOpusSwitchableProcessor(SwitchableProcessor):
     full MagnaOpus O3 core for timing measurement.
     """
 
-    def __init__(self, iq_size=120, diq_size=40):
+    def __init__(self, iq_size=120, diq_size=40,
+                 delta_threshold=2, delta_ignore_threshold=False):
         self._start_key = "start"
         self._switch_key = "switch"
         self._current_is_start = True
@@ -275,6 +297,8 @@ class SuperMagnaOpusSwitchableProcessor(SwitchableProcessor):
         o3_core = SuperMagnaOpusStdCore(
             iq_size=iq_size,
             diq_size=diq_size,
+            delta_threshold=delta_threshold,
+            delta_ignore_threshold=delta_ignore_threshold,
         )
         # cpu_id must match on both sides of the switch or gem5 asserts
         o3_core.get_simobject().cpu_id = atomic_core.get_simobject().cpu_id

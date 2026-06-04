@@ -95,7 +95,7 @@ InstructionQueue::InstructionQueue(CPU *cpu_ptr, IEW *iew_ptr,
       numEntries(params.numIQEntries),
       totalWidth(params.issueWidth),
       commitToIEWDelay(params.commitToIEWDelay),
-      iqStats(cpu, totalWidth),
+      iqStats(cpu, totalWidth, params.numDeltaIQEntries * numThreads),
       iqIOStats(cpu)
 {
     assert(fuPool);
@@ -191,7 +191,8 @@ InstructionQueue::name() const
     return cpu->name() + ".iq";
 }
 
-InstructionQueue::IQStats::IQStats(CPU *cpu, const unsigned &total_width)
+InstructionQueue::IQStats::IQStats(CPU *cpu, const unsigned &total_width,
+        const unsigned &num_delta_entries)
     : statistics::Group(cpu),
     ADD_STAT(instsAdded, statistics::units::Count::get(),
              "Number of instructions added to the IQ (excludes non-spec)"),
@@ -246,7 +247,16 @@ InstructionQueue::IQStats::IQStats(CPU *cpu, const unsigned &total_width)
     ADD_STAT(camBroadcasts, statistics::units::Count::get(),
              "Result tag broadcasts that drive the IQ tag CAM, one per "
              "non-fixed-mapping dest reg written back (HW-faithful "
-             "N_broadcast for the CACTI energy model)")
+             "N_broadcast for the CACTI energy model)"),
+    ADD_STAT(deltaWakeupFanout, statistics::units::Count::get(),
+             "Distribution of live delta consumers woken per producer wakeup "
+             "event (deltaWakeupMap fan-out)"),
+    ADD_STAT(deltaFullFallbacks, statistics::units::Count::get(),
+             "Delta candidates routed to the regular IQ because the DIQ was "
+             "full (saturation fallback; counted once per instruction)"),
+    ADD_STAT(deltaProducerReadyFallbacks, statistics::units::Count::get(),
+             "Delta candidates routed to the regular IQ because the producer "
+             "was already ready (not a saturation event)")
 {
     instsAdded
         .prereq(instsAdded);
@@ -301,6 +311,16 @@ InstructionQueue::IQStats::IQStats(CPU *cpu, const unsigned &total_width)
 
     camBroadcasts
         .prereq(camBroadcasts);
+
+    deltaWakeupFanout
+        .init(1, num_delta_entries > 0 ? num_delta_entries : 1, 1)
+        .flags(statistics::pdf);
+
+    deltaFullFallbacks
+        .prereq(deltaFullFallbacks);
+
+    deltaProducerReadyFallbacks
+        .prereq(deltaProducerReadyFallbacks);
 /*
     queueResDist
         .init(Num_OpClasses, 0, 99, 2)
@@ -636,8 +656,10 @@ InstructionQueue::insert(const DynInstPtr &new_inst)
     // Make sure the instruction is valid
     assert(new_inst);
 
-    bool use_delta_iq = (freeDeltaEntries != 0) && new_inst->isDeltaCand();
-    if (use_delta_iq && freeEntries != 0) 
+    bool is_delta_cand = new_inst->isDeltaCand();
+    bool diq_full = (freeDeltaEntries == 0);
+    bool use_delta_iq = !diq_full && is_delta_cand;
+    if (use_delta_iq && freeEntries != 0)
     {
         PhysRegIdPtr d_src_reg = new_inst->renamedSrcIdx(new_inst->getDeltaSrcIdx());
         if (regScoreboard[d_src_reg->flatIndex()]) 
@@ -704,7 +726,19 @@ InstructionQueue::insert(const DynInstPtr &new_inst)
         DPRINTF(IQ, "Adding instruction [sn:%llu] PC %s to the IQ.\n",
             new_inst->seqNum, new_inst->pcState()
         );
-            
+
+        // A delta candidate only reaches the regular IQ for one of two
+        // reasons: the DIQ was full (capacity/saturation) or the producer was
+        // already ready (no benefit to DIQ tracking).  Count them separately,
+        // once per instruction, so the saturation fallback rate stays clean.
+        if (is_delta_cand) {
+            if (diq_full) {
+                ++iqStats.deltaFullFallbacks;
+            } else {
+                ++iqStats.deltaProducerReadyFallbacks;
+            }
+        }
+
         assert(freeEntries != 0);
         
         instList[new_inst->threadNumber].push_back(new_inst);
@@ -1246,12 +1280,12 @@ InstructionQueue::wakeDependents(const DynInstPtr &completed_inst)
     auto delta_it = deltaWakeupMap.find(completed_inst->seqNum);
     if (delta_it != deltaWakeupMap.end())
     {
-        // Tracks whether this producer woke at least one live (non-squashed)
-        // delta consumer.  Only then does a back-pointer read actually fire
-        // in HW (diqWakeupEvents); a map entry whose consumers were all
-        // squashed has had its DIQ slots invalidated by doSquash() and reads
-        // nothing at writeback.
-        bool woke_live_consumer = false;
+        // Counts the live (non-squashed) delta consumers this producer woke.
+        // A back-pointer read only fires in HW (diqWakeupEvents) when this is
+        // > 0; a map entry whose consumers were all squashed has had its DIQ
+        // slots invalidated by doSquash() and reads nothing at writeback.  The
+        // per-event value is the deltaWakeupMap fan-out k (deltaWakeupFanout).
+        int live_consumers = 0;
         for (DynInstPtr& delta_inst : delta_it->second)
         {
             DPRINTF(Delta,
@@ -1291,14 +1325,16 @@ InstructionQueue::wakeDependents(const DynInstPtr &completed_inst)
                 // already absent from the dependency graph at writeback.
                 ++dependents;
                 ++iqStats.diqWakeupConsumers;
-                woke_live_consumer = true;
+                ++live_consumers;
             }
         }
 
         // A producer-side wakeup event (back-pointer read) only happens if a
-        // live consumer was actually woken.
-        if (woke_live_consumer) {
+        // live consumer was actually woken.  Record the fan-out k (number of
+        // live consumers woken) for this event.
+        if (live_consumers > 0) {
             ++iqStats.diqWakeupEvents;
+            iqStats.deltaWakeupFanout.sample(live_consumers);
         }
 
         deltaWakeupMap.erase(delta_it);

@@ -520,6 +520,12 @@ class CPU : public BaseCPU
     /** The global sequence number counter. */
     InstSeqNum globalSeqNum;//[MaxThreads];
 
+    /** DIQ delta-admission policy, copied onto each DynInst at construction
+     *  so isDeltaCand() can apply it without reaching back into params.
+     *  Defaults (2, false) reproduce the original hardcoded delta<2 behavior. */
+    int64_t deltaThreshold;
+    bool deltaIgnoreThreshold;
+
     /** Pointer to the checker, which can dynamically verify
      * instruction results at run time.  This can be set to NULL if it
      * is not being used.

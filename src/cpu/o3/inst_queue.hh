@@ -515,7 +515,8 @@ class InstructionQueue
 
     struct IQStats : public statistics::Group
     {
-        IQStats(CPU *cpu, const unsigned &total_width);
+        IQStats(CPU *cpu, const unsigned &total_width,
+                const unsigned &num_delta_entries);
         /** Stat for number of instructions added. */
         statistics::Scalar instsAdded;
         /** Stat for number of instructions added to delta IQ. */
@@ -595,6 +596,20 @@ class InstructionQueue
          *  for the CACTI energy model, in contrast to the per-writeback
          *  {int,fp,vec}InstQueueWakeupAccesses counters. */
         statistics::Scalar camBroadcasts;
+        /** Distribution of the number of LIVE (non-squashed) delta consumers
+         *  woken per producer wakeup event (the deltaWakeupMap fan-out, k>=1).
+         *  ::samples equals diqWakeupEvents.  A mean near 1 means a single
+         *  producer->consumer back-pointer per producer suffices in HW. */
+        statistics::Distribution deltaWakeupFanout;
+        /** Delta candidates (isDeltaCand()) routed to the regular IQ because
+         *  the DIQ was full at insert (freeDeltaEntries==0).  Counted once per
+         *  instruction; measures DIQ saturation.  fallback rate =
+         *  deltaFullFallbacks / (deltaInstsAdded + deltaFullFallbacks). */
+        statistics::Scalar deltaFullFallbacks;
+        /** Delta candidates routed to the regular IQ because the producer was
+         *  already ready at insert (NOT a capacity event; excluded from the
+         *  saturation fallback rate). */
+        statistics::Scalar deltaProducerReadyFallbacks;
     } iqStats;
 
    public:

@@ -187,6 +187,16 @@ class BaseO3CPU(BaseCPU):
     numPhysCCRegs = Param.Unsigned(0, "Number of physical cc registers")
     numIQEntries = Param.Unsigned(64, "Number of instruction queue entries")
     numDeltaIQEntries = Param.Unsigned(14, "Number of delta IQ entries")
+    deltaThreshold = Param.Int(
+        2,
+        "Delta cycleDist (delta) admission threshold; the single outstanding "
+        "source must have cycleDist < this value to be a DIQ candidate",
+    )
+    deltaIgnoreThreshold = Param.Bool(
+        False,
+        "If True, ignore the delta threshold: admit any single-outstanding "
+        "non-ready instruction to the DIQ regardless of cycleDist",
+    )
     numROBEntries = Param.Unsigned(192, "Number of reorder buffer entries")
 
     smtNumFetchingThreads = Param.Unsigned(1, "SMT Number of Fetching Threads")

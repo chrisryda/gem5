@@ -296,6 +296,9 @@ class Rename
     /** Writes the data in distDependencies to file */
     void writeDistDependencies();
 
+    /** Writes the data in distOutstandingSrcs to file */
+    void writeOutstandingSrcs();
+
     /** Holds the information for each destination register rename. It holds
      * the instruction's sequence number, the arch register, the old physical
      * register for that arch. register, and the new physical register.
@@ -389,6 +392,19 @@ class Rename
      * during the run, which would break a relative path resolved at exit.
      */
     std::string distDepPath;
+
+    /** Unordered map of <k, num>, where num is the number of dispatched
+     * instructions with exactly k outstanding (not-yet-ready) source operands.
+     * k=0 fully ready, k=1 single-dependency (the DIQ target population),
+     * k>=2 multi-dependency. Characterizes the workload, independent of the
+     * DIQ admission policy.
+     */
+    std::unordered_map<int, uint64_t> distOutstandingSrcs;
+
+    /** Absolute path for the outstanding-source CSV, resolved at construction
+     * time (same cwd caveat as distDepPath).
+     */
+    std::string outstandingSrcsPath;
 
     /** Count of instructions in progress that have been sent off to the IQ
      * and ROB, but are not yet included in their occupancy counts.

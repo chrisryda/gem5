@@ -137,6 +137,12 @@ class DynInst : public ExecContext, public RefCounted
     /** Vector of all Delta-instances for a DynInst. */
     std::vector<Delta> deltaVec;
 
+    /** DIQ delta-admission policy, copied from the CPU at construction.
+     *  Defaults reproduce the original hardcoded delta<2 behavior even when
+     *  cpu is null (e.g. the checker's static-inst DynInst). */
+    int64_t deltaThreshold = 2;
+    bool deltaIgnoreThreshold = false;
+
     /** The StaticInst used by this BaseDynInst. */
     const StaticInstPtr staticInst;
 
@@ -671,6 +677,21 @@ class DynInst : public ExecContext, public RefCounted
         deltaVec.at(idx).cycleDist = cycleDist;
     }
 
+    /** Number of source operands still outstanding (not yet ready) at the
+     *  point readiness was evaluated in rename.  This is exactly the dep_regs
+     *  count isDeltaCand() uses: deltaVec[i].dependent == !regReady for every
+     *  source (set in Rename::renameSrcRegs()).  Used to characterize the
+     *  per-instruction outstanding-source distribution (the DIQ relies on this
+     *  being 1). */
+    int numOutstandingSrcs() const
+    {
+        int dep_regs = 0;
+        for (const Delta &d : deltaVec) {
+            if (d.dependent) dep_regs++;
+        }
+        return dep_regs;
+    }
+
     /** Checks if this instruction is a candidate for delta filtering. */
     bool isDeltaCand()
     {
@@ -680,7 +701,8 @@ class DynInst : public ExecContext, public RefCounted
         {
             if (!d.dependent) continue;
             dep_regs++;
-            if (d.seqNum != -1 && d.cycleDist >= 0 && d.cycleDist < 2)
+            if (d.seqNum != -1 && d.cycleDist >= 0 &&
+                (deltaIgnoreThreshold || d.cycleDist < deltaThreshold))
             {
                 delta_deps++;
             }

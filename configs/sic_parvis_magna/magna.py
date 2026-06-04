@@ -46,6 +46,8 @@ parser.add_argument("--warmup-insts", type=str, default="0", help="Instructions 
 parser.add_argument("--o3-warmup-insts", type=str, default="0", help="Instructions to run on O3 (no stats) before measurement (e.g. 100M). Requires --warmup-insts > 0.")
 parser.add_argument("--iq-size", type=int, default=120, help="Regular IQ entries")
 parser.add_argument("--diq-size", type=int, default=40, help="Delta IQ entries")
+parser.add_argument("--delta-threshold", type=int, default=2, help="Delta cycleDist admission threshold (a candidate's single outstanding source must have cycleDist < this). Default 2 = current behavior.")
+parser.add_argument("--delta-ignore-threshold", action="store_true", default=False, help="Mode B: ignore the delta threshold and admit any single-outstanding non-ready inst to the DIQ (still bounded by DIQ capacity).")
 parser.add_argument("--zero-lat", action="store_true", default=False, help="Use 1-cycle cache latencies and near-zero DRAM latency to isolate IQ bottleneck")
 parser.add_argument("--super", dest="super_mode", action="store_true", default=False, help="Use over-provisioned processor (wide pipeline, large ROB/LSQ/regfile) to isolate IQ as bottleneck")
 args = parser.parse_args()
@@ -54,19 +56,23 @@ o3_warmup_insts = parse_count(args.o3_warmup_insts)
 if o3_warmup_insts > 0 and warmup_insts == 0:
     parser.error("--o3-warmup-insts requires --warmup-insts to be set")
 
+diq_admission_kwargs = dict(
+    delta_threshold=args.delta_threshold,
+    delta_ignore_threshold=args.delta_ignore_threshold,
+)
 if warmup_insts > 0:
     if args.super_mode:
-        processor = SuperMagnaOpusSwitchableProcessor(iq_size=args.iq_size, diq_size=args.diq_size)
+        processor = SuperMagnaOpusSwitchableProcessor(iq_size=args.iq_size, diq_size=args.diq_size, **diq_admission_kwargs)
         proc_name = "Switch Super MO"
     else:
-        processor = MagnaOpusSwitchableProcessor(iq_size=args.iq_size, diq_size=args.diq_size)
+        processor = MagnaOpusSwitchableProcessor(iq_size=args.iq_size, diq_size=args.diq_size, **diq_admission_kwargs)
         proc_name = "Switch MagnaOpus"
 else:
     if args.super_mode:
-        processor = SuperMagnaOpus(iq_size=args.iq_size, diq_size=args.diq_size)
+        processor = SuperMagnaOpus(iq_size=args.iq_size, diq_size=args.diq_size, **diq_admission_kwargs)
         proc_name = "Super MO"
     else:
-        processor = MagnaOpus(iq_size=args.iq_size, diq_size=args.diq_size)
+        processor = MagnaOpus(iq_size=args.iq_size, diq_size=args.diq_size, **diq_admission_kwargs)
         proc_name = "MagnaOpus"
 
 if args.zero_lat:

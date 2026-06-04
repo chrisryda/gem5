@@ -74,6 +74,15 @@ DynInst::DynInst(const Arrays &arrays, const StaticInstPtr &static_inst,
         deltaVec.push_back({true, -1, -1});
     }
 
+    // Inherit the DIQ delta-admission policy from the CPU so isDeltaCand()
+    // can apply it.  Guarded because the static-inst DynInst ctor passes a
+    // null cpu; the member defaults (2, false) then preserve the original
+    // hardcoded delta<2 behavior.
+    if (cpu) {
+        deltaThreshold = cpu->deltaThreshold;
+        deltaIgnoreThreshold = cpu->deltaIgnoreThreshold;
+    }
+
 #ifndef NDEBUG
     ++cpu->instcount;
 

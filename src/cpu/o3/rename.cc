@@ -83,6 +83,19 @@ Rename::Rename(CPU *_cpu, const BaseO3CPUParams &params)
             distDepPath = simout.resolve("dist_dependencies.csv");
         }
         registerExitCallback([this]() { writeDistDependencies(); });
+
+        // The per-instruction outstanding-source histogram is a preliminary
+        // workload characterization, dumped only on this same 160/0 baseline
+        // as the dependency-distance CSV above so the two are paired per
+        // benchmark. Resolve the path now (cwd may change mid-run) and dump at
+        // exit, mirroring the dependency-distance CSV.
+        if (char *abs = realpath(simout.directory().c_str(), nullptr)) {
+            outstandingSrcsPath = std::string(abs) + "/dist_outstanding_srcs.csv";
+            free(abs);
+        } else {
+            outstandingSrcsPath = simout.resolve("dist_outstanding_srcs.csv");
+        }
+        registerExitCallback([this]() { writeOutstandingSrcs(); });
     }
 
     if (renameWidth > MaxWidth)
@@ -1090,6 +1103,12 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
     unsigned num_src_regs = inst->numSrcRegs();
     auto *isa = tc->getIsaPtr();
 
+    // Bin this instruction into the outstanding-source histogram exactly once.
+    // rename can push an instruction back and re-run renameSrcRegs next cycle
+    // (see the markSrcRegReady guard below); isSrcRegsRenamed() is only set at
+    // the end of the first pass, so it cleanly distinguishes the first pass.
+    const bool first_rename_pass = !inst->isSrcRegsRenamed();
+
     // Get the architectual register numbers from the source and
     // operands, and redirect them to the right physical register.
     for (int src_idx = 0; src_idx < num_src_regs; src_idx++) {
@@ -1245,6 +1264,21 @@ Rename::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
 
         ++stats.lookups;
     }
+
+    // All per-source dependent flags are now final. Record the number of
+    // outstanding (not-yet-ready) sources for this instruction, reusing the
+    // same dep count isDeltaCand() reads. Guarded to the first pass so a
+    // pushed-back instruction is not double-counted.
+    if (first_rename_pass) {
+        int k = inst->numOutstandingSrcs();
+        auto it = distOutstandingSrcs.find(k);
+        if (it != distOutstandingSrcs.end()) {
+            it->second += 1;
+        } else {
+            distOutstandingSrcs.insert({k, 1});
+        }
+    }
+
     inst->setSrcRegsRenamed();
 }
 
@@ -1657,6 +1691,24 @@ Rename::writeDistDependencies()
     csv_file << "delta,num\n";
     for (const auto &dd : distDependecies)
         csv_file << dd.first << "," << dd.second << "\n";
+}
+
+void
+Rename::writeOutstandingSrcs()
+{
+    if (distOutstandingSrcs.empty())
+        return;
+
+    std::ofstream csv_file(outstandingSrcsPath);
+    if (!csv_file.is_open()) {
+        warn("Rename: failed to open '%s' to write outstanding source counts\n",
+             outstandingSrcsPath);
+        return;
+    }
+
+    csv_file << "outstanding_srcs,num_insts\n";
+    for (const auto &os : distOutstandingSrcs)
+        csv_file << os.first << "," << os.second << "\n";
 }
 
 } // namespace o3

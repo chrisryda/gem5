@@ -112,6 +112,8 @@ CPU::CPU(const BaseO3CPUParams &params)
                   params.activity),
 
       globalSeqNum(1),
+      deltaThreshold(params.deltaThreshold),
+      deltaIgnoreThreshold(params.deltaIgnoreThreshold),
       system(params.system),
       lastRunningCycle(curCycle()),
       cpuStats(this)
