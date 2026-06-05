@@ -84,6 +84,17 @@ Rename::Rename(CPU *_cpu, const BaseO3CPUParams &params)
         }
         registerExitCallback([this]() { writeDistDependencies(); });
 
+        // Honor m5.stats.reset() for the dependency-distance histogram too, so
+        // it tracks the measurement window rather than the O3 warmup phase
+        // (kept parallel with the outstanding-source histogram below). The
+        // producer-timestamp map tsRegRename is intentionally NOT cleared:
+        // cycleDist uses absolute cycles (unaffected by the stats reset), so
+        // leaving it keeps real long-distance dependencies accurate across the
+        // window boundary.
+        statistics::registerResetCallback([this]() {
+            distDependecies.clear();
+        });
+
         // The per-instruction outstanding-source histogram is a preliminary
         // workload characterization, dumped only on this same 160/0 baseline
         // as the dependency-distance CSV above so the two are paired per
@@ -96,6 +107,14 @@ Rename::Rename(CPU *_cpu, const BaseO3CPUParams &params)
             outstandingSrcsPath = simout.resolve("dist_outstanding_srcs.csv");
         }
         registerExitCallback([this]() { writeOutstandingSrcs(); });
+
+        // Honor m5.stats.reset(): magna.py runs an optional O3 warmup phase and
+        // then resets stats before the measurement window. Clear the histogram
+        // on reset so its instruction count tracks the same window as the gem5
+        // stats (e.g. rename.renamedInsts) instead of spanning the warmup too.
+        statistics::registerResetCallback([this]() {
+            distOutstandingSrcs.clear();
+        });
     }
 
     if (renameWidth > MaxWidth)

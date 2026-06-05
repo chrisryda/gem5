@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
-import pandas as pd 
+from matplotlib.lines import Line2D
+import pandas as pd
 import numpy as np
 import argparse
 import signal
@@ -15,6 +16,8 @@ parser.add_argument('-cumul', dest="cumul", action=argparse.BooleanOptionalActio
 parser.add_argument('-cumulog', dest="cumulog", action=argparse.BooleanOptionalAction, help="Plot cumulative graph with logarithmic scaling on the x graph.")
 parser.add_argument('-all', dest="all_bench", action=argparse.BooleanOptionalAction, help="Overlay cumulative curves for every benchmark in the combined file.")
 parser.add_argument('-geo', dest="geo", action=argparse.BooleanOptionalAction, help="Overlay the geometric-mean cumulative curve across all benchmarks. Combine with -all to draw it on top of the per-benchmark curves.")
+parser.add_argument('-srcs', dest="srcs", action=argparse.BooleanOptionalAction, help="Plot the per-instruction outstanding-source-count distribution (dist_outstanding_srcs_*.csv, IQ=160/DIQ=0 baseline) as a stacked %% bar per benchmark.")
+parser.add_argument('-nonready', dest="nonready", action=argparse.BooleanOptionalAction, help="With -srcs: restrict to non-ready instructions (>=1 outstanding source); the k=1 segment is then the DIQ single-link target share.")
 parser.add_argument('-s', dest="save_plot", action=argparse.BooleanOptionalAction, help="Save plot to file")
 parser.add_argument("-f", dest="file_name", type=str, help="The file to plot")
 parser.add_argument("-x", dest="x_lim", type=int, help="The x limit of the plot")
@@ -25,7 +28,7 @@ home = os.path.expanduser("~")
 stats_dir = f"{home}/nec/gem5/plot_dependencies/stats" if "crd" in home else f"{home}/gem5/plot_dependencies/stats"
 save_dir = f"{home}/Documents/y6s2/ma-TDT4900" if "crd" in home else f"{home}/gem5/plot_dependencies/plots"
 
-default_name = "all160" if (args.all_bench or args.geo) else "whet1B"
+default_name = "all160" if (args.all_bench or args.geo or args.srcs) else "whet1B"
 file_name = args.file_name if args.file_name else default_name
 
 def make_cumul_all():
@@ -83,6 +86,113 @@ def make_cumul_geo():
     plt.yticks(np.arange(0, 100+1, 10))
     plt.legend(fontsize=7)
     return (x_lim, 100, "cumul_geo")
+
+
+def make_outstanding():
+    # New measurement, collected only from the IQ=160/DIQ=0 baseline sims (the
+    # DIQ characterization gate): counted once per instruction AT RENAME (first
+    # rename pass, rename.cc renameSrcRegs), how many of its source operands
+    # still had an in-flight producer.  CSV schema is
+    #   bench,outstanding_srcs,num_insts
+    # with outstanding_srcs = k (0,1,2,...) and num_insts = number of renamed
+    # instructions that had exactly k outstanding sources.  k==1 is the DIQ's
+    # target population: a single producer->consumer back-pointer suffices, so a
+    # large k==1 share among *non-ready* (k>=1) instructions validates the DIQ.
+    df = pd.read_csv(f"{stats_dir}/dist_outstanding_srcs_{file_name}.csv")
+    # collect-outstanding appends suite-average summary rows (pooled_pct /
+    # arithmean_pct / geomean_pct, holding PERCENTAGES not counts).  Drop them so
+    # they are not drawn as extra bars -- the pooled summary bar is recomputed
+    # below from the per-benchmark counts (self-contained).  "pooled" kept for
+    # backward-compat with the earlier summed-count rows.
+    df = df[~df["bench"].isin(
+        ["pooled", "pooled_pct", "arithmean_pct", "geomean_pct",
+         "pooled_pct_nonready", "arithmean_pct_nonready", "geomean_pct_nonready"])]
+
+    # Stacked distribution.  Cap the (rare) long tail into a single "cap+" bucket
+    # so the bars stay legible; -x overrides the cap (default 5).
+    cap = args.x_lim if args.x_lim else 5
+    df = df.copy()
+    df["k"] = df["outstanding_srcs"].clip(upper=cap)
+    piv = df.groupby(["bench", "k"])["num_insts"].sum().unstack(fill_value=0)
+    for k in range(cap + 1):                       # guarantee every column 0..cap
+        if k not in piv.columns:
+            piv[k] = 0
+    piv = piv[sorted(piv.columns)]
+
+    denom = "renamed"
+    if args.nonready:                              # drop ready insts (k==0)
+        piv = piv.drop(columns=[0], errors="ignore")
+        denom = "non-ready"
+
+    # Express each bench's raw counts as % of its OWN instruction total.  The k
+    # buckets partition the bench, so this is exact (sums to 100, nothing
+    # stretched) -- it's the real per-bench distribution, just in % not counts.
+    pct = piv.div(piv.sum(axis=1), axis=0) * 100
+
+    # Single-outstanding-source (k==1) share in the current denominator, per
+    # benchmark plus the three suite-level averages.  POOLED is what the summary
+    # bar shows (instruction-weighted fraction over the whole suite); the other
+    # two are printed for reference.
+    share     = pct[1]
+    pooled_k1 = piv[1].sum() / piv.values.sum() * 100
+    amean_k1  = share.mean()
+    geo_k1    = np.exp(np.log(share.replace(0, np.nan)).mean())
+    print(f"single-outstanding-source (k=1) share among "
+          f"{'non-ready (k>=1)' if args.nonready else 'all renamed'} instructions:")
+    for b in share.sort_index().index:
+        print(f"  {b:<14s} {share[b]:5.1f}%")
+    print(f"  {'POOLED':<14s} {pooled_k1:5.1f}%   (instruction-weighted; the summary bar)")
+    print(f"  {'arith-mean':<14s} {amean_k1:5.1f}%")
+    print(f"  {'geomean':<14s} {geo_k1:5.1f}%")
+
+    benches = list(pct.index)
+    x = np.arange(len(benches))
+    bottom = np.zeros(len(benches))
+    # Colour keyed to the k value (not column position) so the k==1 segment is
+    # the same hue with or without k==0 present (default vs -nonready stay comparable).
+    colors = {k: plt.cm.viridis(0.1 + 0.8 * (k / cap)) for k in range(cap + 1)}
+    for k in pct.columns:
+        label = f"{int(k)}+" if k == cap else f"{int(k)}"
+        plt.bar(x, pct[k].values, bottom=bottom, color=colors[k],
+                edgecolor="black", linewidth=0.3, label=label, zorder=3)
+        bottom += pct[k].values
+
+    # Pooled summary bar, drawn to the right with a gap.  Each segment is the
+    # instruction-weighted share over the whole suite: sum the raw counts across
+    # benchmarks, then normalize.  It is a genuine distribution, so it sums to
+    # 100% exactly like the per-benchmark bars, and the k==1 height is the
+    # fraction of all (current-denominator) instructions with one outstanding src.
+    pooled = piv.sum(axis=0)
+    pooled = pooled / pooled.sum() * 100
+    gx = len(benches) + 0.8
+    gbottom = 0.0
+    for k in pct.columns:
+        plt.bar(gx, pooled[k], bottom=gbottom, color=colors[k],
+                edgecolor="black", linewidth=0.3, zorder=3)
+        gbottom += pooled[k]
+    plt.axvline(len(benches) - 0.1, color="0.6", linewidth=0.8,
+                linestyle="--", zorder=1)
+
+    plt.xticks(list(x) + [gx], benches + ["pooled"], rotation=90, fontsize=7)
+    plt.gca().get_xticklabels()[-1].set_fontweight("bold")
+    plt.ylabel(f"% of {denom} instructions")
+    plt.ylim(0, 100)
+    plt.yticks(np.arange(0, 100 + 1, 10))
+
+    # Horizontal legend across the top, prefixed inline by a label.  The prefix
+    # is a marker-less proxy handle so it flows on the same row as the colour
+    # swatches: "No. outstanding sources:  [c0] 0  [c1] 1  ...".
+    handles, _ = plt.gca().get_legend_handles_labels()
+    prefix = Line2D([], [], marker="none", linestyle="none",
+                    label="No. outstanding sources:")
+    leg = plt.legend(handles=[prefix] + handles, ncol=len(handles) + 1,
+                     loc="lower center", bbox_to_anchor=(0.5, 1.0),
+                     frameon=False, fontsize=8, handlelength=1.1,
+                     handletextpad=0.4, columnspacing=1.1, borderaxespad=0.4)
+    leg.get_texts()[0].set_fontweight("bold")
+
+    plt_type = "outstanding_nonready" if args.nonready else "outstanding"
+    return (None, None, plt_type)
 
 
 def make_cumul():
@@ -153,7 +263,9 @@ def make_scatter():
     y_lim = args.y_lim if args.y_lim else num.max()
     return (x_lim, y_lim, "scatter")
 
-if args.geo:
+if args.srcs:
+    x_lim, y_lim, plt_type = make_outstanding()
+elif args.geo:
     x_lim, y_lim, plt_type = make_cumul_geo()
 elif args.all_bench:
     x_lim, y_lim, plt_type = make_cumul_all()
@@ -164,13 +276,17 @@ elif args.cumul or args.cumulog:
 else:
     x_lim, y_lim, plt_type = make_scatter()
 
-if x_lim <= 10:
-    plt.xticks(np.arange(0, (x_lim+1), 1))
-elif x_lim <= 100:
-    plt.xticks(np.arange(0, (x_lim+1), 5))
+# The numeric-x reformatting below only applies to the delta-based plots; the
+# outstanding-source plot uses a categorical (per-benchmark) x-axis set above.
+if not args.srcs:
+    if x_lim <= 10:
+        plt.xticks(np.arange(0, (x_lim+1), 1))
+    elif x_lim <= 100:
+        plt.xticks(np.arange(0, (x_lim+1), 5))
 
-plt.xlim((-0.5, (x_lim+0.5)))
-plt.ylim((-0.5, y_lim))
+    plt.xlim((-0.5, (x_lim+0.5)))
+    plt.ylim((-0.5, y_lim))
+
 plt.grid(True, linestyle="--", alpha=0.5)
 try:
     if args.save_plot:
