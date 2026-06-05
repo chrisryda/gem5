@@ -83,6 +83,16 @@ Rename::Rename(CPU *_cpu, const BaseO3CPUParams &params)
             distDepPath = simout.resolve("dist_dependencies.csv");
         }
         registerExitCallback([this]() { writeDistDependencies(); });
+
+        // Honor m5.stats.reset() for the dependency-distance histogram, so it
+        // tracks the measurement window rather than the O3 warmup phase. The
+        // producer-timestamp map tsRegRename is intentionally NOT cleared:
+        // cycleDist uses absolute cycles (unaffected by the stats reset), so
+        // leaving it keeps real long-distance dependencies accurate across the
+        // window boundary.
+        statistics::registerResetCallback([this]() {
+            distDependecies.clear();
+        });
     }
 
     if (renameWidth > MaxWidth)
