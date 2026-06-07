@@ -610,6 +610,11 @@ class InstructionQueue
          *  already ready at insert (NOT a capacity event; excluded from the
          *  saturation fallback rate). */
         statistics::Scalar deltaProducerReadyFallbacks;
+        /** Delta candidates routed to the regular IQ because their producer
+         *  already had a live delta consumer, under the one-back-pointer-per-
+         *  producer policy (cpu->deltaSingleConsumer).  Zero when the policy is
+         *  off; measures how many consumers the fan-out=1 cap diverts. */
+        statistics::Scalar deltaSingleConsumerFallbacks;
     } iqStats;
 
    public:

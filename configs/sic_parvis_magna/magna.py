@@ -48,6 +48,7 @@ parser.add_argument("--iq-size", type=int, default=120, help="Regular IQ entries
 parser.add_argument("--diq-size", type=int, default=40, help="Delta IQ entries")
 parser.add_argument("--delta-threshold", type=int, default=2, help="Delta cycleDist admission threshold (a candidate's single outstanding source must have cycleDist < this). Default 2 = current behavior.")
 parser.add_argument("--delta-ignore-threshold", action="store_true", default=False, help="Mode B: ignore the delta threshold and admit any single-outstanding non-ready inst to the DIQ (still bounded by DIQ capacity).")
+parser.add_argument("--delta-single-consumer", action="store_true", default=False, help="Enforce one back-pointer per producer: route a delta candidate to the regular IQ if its producer already has a live delta consumer (caps fan-out at 1).")
 parser.add_argument("--zero-lat", action="store_true", default=False, help="Use 1-cycle cache latencies and near-zero DRAM latency to isolate IQ bottleneck")
 parser.add_argument("--super", dest="super_mode", action="store_true", default=False, help="Use over-provisioned processor (wide pipeline, large ROB/LSQ/regfile) to isolate IQ as bottleneck")
 args = parser.parse_args()
@@ -59,6 +60,7 @@ if o3_warmup_insts > 0 and warmup_insts == 0:
 diq_admission_kwargs = dict(
     delta_threshold=args.delta_threshold,
     delta_ignore_threshold=args.delta_ignore_threshold,
+    delta_single_consumer=args.delta_single_consumer,
 )
 if warmup_insts > 0:
     if args.super_mode:

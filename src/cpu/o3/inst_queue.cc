@@ -256,7 +256,11 @@ InstructionQueue::IQStats::IQStats(CPU *cpu, const unsigned &total_width,
              "full (saturation fallback; counted once per instruction)"),
     ADD_STAT(deltaProducerReadyFallbacks, statistics::units::Count::get(),
              "Delta candidates routed to the regular IQ because the producer "
-             "was already ready (not a saturation event)")
+             "was already ready (not a saturation event)"),
+    ADD_STAT(deltaSingleConsumerFallbacks, statistics::units::Count::get(),
+             "Delta candidates routed to the regular IQ because their producer "
+             "already had a live delta consumer (one-back-pointer-per-producer "
+             "policy)")
 {
     instsAdded
         .prereq(instsAdded);
@@ -321,6 +325,9 @@ InstructionQueue::IQStats::IQStats(CPU *cpu, const unsigned &total_width,
 
     deltaProducerReadyFallbacks
         .prereq(deltaProducerReadyFallbacks);
+
+    deltaSingleConsumerFallbacks
+        .prereq(deltaSingleConsumerFallbacks);
 /*
     queueResDist
         .init(Num_OpClasses, 0, 99, 2)
@@ -659,16 +666,46 @@ InstructionQueue::insert(const DynInstPtr &new_inst)
     bool is_delta_cand = new_inst->isDeltaCand();
     bool diq_full = (freeDeltaEntries == 0);
     bool use_delta_iq = !diq_full && is_delta_cand;
+    bool single_consumer_block = false;
     if (use_delta_iq && freeEntries != 0)
     {
         PhysRegIdPtr d_src_reg = new_inst->renamedSrcIdx(new_inst->getDeltaSrcIdx());
-        if (regScoreboard[d_src_reg->flatIndex()]) 
+        if (regScoreboard[d_src_reg->flatIndex()])
         {
             DPRINTF(Delta,
                 "IQDelta: Producer already done for [sn:%llu], falling back to regular IQ.\n",
                 new_inst->seqNum
             );
             use_delta_iq = false;
+        }
+    }
+
+    // One-back-pointer-per-producer: deny DIQ admission to a delta candidate
+    // whose producer already has a live delta consumer, routing it to the
+    // regular IQ instead.  Caps wakeup fan-out at 1.  deltaWakeupMap only holds
+    // genuinely-waiting, non-squashed consumers (squashed ones are removed in
+    // doSquash and the entry is erased when empty), so a non-empty vector means
+    // a live back-pointer is already in use.  Guarded by use_delta_iq, which
+    // implies is_delta_cand, so getDeltaProdSeqNum() is safe here.
+    //
+    // The freeEntries != 0 guard is REQUIRED (mirrors the producer-ready
+    // fallback above): when the regular IQ is full, IEW::dispatch only lets a
+    // delta candidate through because the DIQ has room (iew.cc dispatchInsts),
+    // so there is no free IQ slot to divert into -- routing it to the IQ would
+    // trip assert(freeEntries != 0) below.  In that (IQ-full) case we leave the
+    // candidate on the DIQ path, so the fan-out cap is best-effort: it can be
+    // momentarily exceeded only while the regular IQ is saturated.
+    if (use_delta_iq && freeEntries != 0 && cpu->deltaSingleConsumer)
+    {
+        auto delta_it = deltaWakeupMap.find(new_inst->getDeltaProdSeqNum());
+        if (delta_it != deltaWakeupMap.end() && !delta_it->second.empty())
+        {
+            DPRINTF(Delta,
+                "IQDelta: Producer already has a delta consumer; routing "
+                "[sn:%llu] to regular IQ.\n", new_inst->seqNum
+            );
+            use_delta_iq = false;
+            single_consumer_block = true;
         }
     }
 
@@ -727,13 +764,19 @@ InstructionQueue::insert(const DynInstPtr &new_inst)
             new_inst->seqNum, new_inst->pcState()
         );
 
-        // A delta candidate only reaches the regular IQ for one of two
-        // reasons: the DIQ was full (capacity/saturation) or the producer was
-        // already ready (no benefit to DIQ tracking).  Count them separately,
-        // once per instruction, so the saturation fallback rate stays clean.
+        // A delta candidate only reaches the regular IQ for one of three
+        // reasons: the DIQ was full (capacity/saturation), the producer was
+        // already ready (no benefit to DIQ tracking), or the one-back-pointer-
+        // per-producer policy diverted it.  Count them separately, once per
+        // instruction, so the saturation fallback rate stays clean.  The checks
+        // are mutually exclusive by construction (each later fallback is gated
+        // on use_delta_iq still being true), with precedence full > producer-
+        // ready > single-consumer.
         if (is_delta_cand) {
             if (diq_full) {
                 ++iqStats.deltaFullFallbacks;
+            } else if (single_consumer_block) {
+                ++iqStats.deltaSingleConsumerFallbacks;
             } else {
                 ++iqStats.deltaProducerReadyFallbacks;
             }

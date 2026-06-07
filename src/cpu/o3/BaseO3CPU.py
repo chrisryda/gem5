@@ -197,6 +197,12 @@ class BaseO3CPU(BaseCPU):
         "If True, ignore the delta threshold: admit any single-outstanding "
         "non-ready instruction to the DIQ regardless of cycleDist",
     )
+    deltaSingleConsumer = Param.Bool(
+        False,
+        "If True, enforce one back-pointer per producer: a delta candidate "
+        "whose producer already has a live delta consumer is routed to the "
+        "regular IQ instead of the DIQ (caps delta wakeup fan-out at 1)",
+    )
     numROBEntries = Param.Unsigned(192, "Number of reorder buffer entries")
 
     smtNumFetchingThreads = Param.Unsigned(1, "SMT Number of Fetching Threads")

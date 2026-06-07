@@ -526,6 +526,12 @@ class CPU : public BaseCPU
     int64_t deltaThreshold;
     bool deltaIgnoreThreshold;
 
+    /** One-back-pointer-per-producer DIQ policy. Unlike the threshold above
+     *  this is read directly by InstructionQueue::insert() (it depends on the
+     *  IQ's deltaWakeupMap state, not just the DynInst), so it is NOT copied
+     *  onto each DynInst. Default false reproduces unbounded fan-out. */
+    bool deltaSingleConsumer;
+
     /** Pointer to the checker, which can dynamically verify
      * instruction results at run time.  This can be set to NULL if it
      * is not being used.
