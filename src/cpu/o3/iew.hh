@@ -442,6 +442,12 @@ class IEW
         statistics::Scalar dispNonSpecInsts;
         /** Stat for number of times the IQ becomes full. */
         statistics::Scalar iqFullEvents;
+        /** Stat for dispatch stalls caused specifically by the strict
+         *  one-back-pointer-per-producer policy (cpu->deltaSingleConsumer): a
+         *  delta candidate whose producer already had a live delta consumer was
+         *  denied the DIQ bypass on a full IQ and stalled.  Zero when the policy
+         *  is off; measures the throughput cost of the strict fan-out=1 cap. */
+        statistics::Scalar deltaSingleConsumerStalls;
         /** Stat for number of times the LSQ becomes full. */
         statistics::Scalar lsqFullEvents;
         /** Stat for total number of memory ordering violation events. */

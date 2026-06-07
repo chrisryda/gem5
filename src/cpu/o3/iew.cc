@@ -163,6 +163,10 @@ IEW::IEWStats::IEWStats(CPU *cpu)
              "Number of dispatched non-speculative instructions"),
     ADD_STAT(iqFullEvents, statistics::units::Count::get(),
              "Number of times the IQ has become full, causing a stall"),
+    ADD_STAT(deltaSingleConsumerStalls, statistics::units::Count::get(),
+             "Dispatch stalls where a delta candidate was denied the DIQ "
+             "bypass on a full IQ because its producer already had a live "
+             "delta consumer (strict one-back-pointer-per-producer policy)"),
     ADD_STAT(lsqFullEvents, statistics::units::Count::get(),
              "Number of times the LSQ has become full, causing a stall"),
     ADD_STAT(memOrderViolationEvents, statistics::units::Count::get(),
@@ -934,20 +938,36 @@ IEW::dispatchInsts(ThreadID tid)
 
         // Check for full conditions.
         if (instQueue.isFull(tid)) {
-            // Allow delta candidates to bypass a full IQ into the DIQ,
-            // but only for speculative instructions that go through
-            // insert().  Atomics, store-conditionals, non-speculative
-            // instructions, and barriers all require an IQ slot via
-            // insertNonSpec() and cannot use the DIQ bypass path.
-            if (!inst->isDeltaCand() || instQueue.isDeltaFull(tid) ||
-                inst->isAtomic() || inst->isStoreConditional() ||
-                inst->isNonSpeculative() ||
-                inst->isReadBarrier() || inst->isWriteBarrier()) {
+            // A delta candidate may bypass a full IQ into the DIQ, but only
+            // for speculative instructions that go through insert().  Atomics,
+            // store-conditionals, non-speculative instructions, and barriers
+            // all require an IQ slot via insertNonSpec() and cannot use the
+            // DIQ bypass path.
+            bool delta_bypass = inst->isDeltaCand() &&
+                !instQueue.isDeltaFull(tid) &&
+                !inst->isAtomic() && !inst->isStoreConditional() &&
+                !inst->isNonSpeculative() &&
+                !inst->isReadBarrier() && !inst->isWriteBarrier();
+
+            // Strict one-back-pointer-per-producer: a delta candidate whose
+            // producer already has a live delta consumer is really a regular-IQ
+            // instruction (its single back-pointer is taken), so it must stall
+            // on a full IQ instead of taking a 2nd DIQ back-pointer.  Without
+            // this it would slip into the DIQ here and inflate fan-out > 1
+            // while the IQ is saturated.  It unblocks once an IQ slot frees or
+            // the producer writes back (freeing the back-pointer).
+            bool single_consumer_stall = delta_bypass &&
+                cpu->deltaSingleConsumer &&
+                instQueue.deltaProducerHasLiveConsumer(inst);
+
+            if (!delta_bypass || single_consumer_stall) {
                 DPRINTF(IEW, "[tid:%i] Issue: IQ has become full.\n", tid);
 
                 block(tid);
                 toRename->iewUnblock[tid] = false;
                 ++iewStats.iqFullEvents;
+                if (single_consumer_stall)
+                    ++iewStats.deltaSingleConsumerStalls;
                 break;
             }
             // Delta candidate with DIQ space: fall through to insert(),

@@ -635,6 +635,15 @@ InstructionQueue::isDeltaFull(ThreadID tid)
 }
 
 bool
+InstructionQueue::deltaProducerHasLiveConsumer(const DynInstPtr &inst)
+{
+    if (!inst->isDeltaCand())
+        return false;
+    auto it = deltaWakeupMap.find(inst->getDeltaProdSeqNum());
+    return it != deltaWakeupMap.end() && !it->second.empty();
+}
+
+bool
 InstructionQueue::hasReadyInsts()
 {
     if (!listOrder.empty()) {
@@ -682,23 +691,21 @@ InstructionQueue::insert(const DynInstPtr &new_inst)
 
     // One-back-pointer-per-producer: deny DIQ admission to a delta candidate
     // whose producer already has a live delta consumer, routing it to the
-    // regular IQ instead.  Caps wakeup fan-out at 1.  deltaWakeupMap only holds
-    // genuinely-waiting, non-squashed consumers (squashed ones are removed in
-    // doSquash and the entry is erased when empty), so a non-empty vector means
-    // a live back-pointer is already in use.  Guarded by use_delta_iq, which
-    // implies is_delta_cand, so getDeltaProdSeqNum() is safe here.
+    // regular IQ instead.  Caps wakeup fan-out at 1.  Guarded by use_delta_iq,
+    // which implies is_delta_cand.
     //
-    // The freeEntries != 0 guard is REQUIRED (mirrors the producer-ready
-    // fallback above): when the regular IQ is full, IEW::dispatch only lets a
-    // delta candidate through because the DIQ has room (iew.cc dispatchInsts),
-    // so there is no free IQ slot to divert into -- routing it to the IQ would
-    // trip assert(freeEntries != 0) below.  In that (IQ-full) case we leave the
-    // candidate on the DIQ path, so the fan-out cap is best-effort: it can be
-    // momentarily exceeded only while the regular IQ is saturated.
+    // The strict cap is actually enforced one step earlier, in
+    // IEW::dispatchInsts(): a candidate whose producer already has a live
+    // consumer is not allowed to bypass a full IQ into the DIQ -- it stalls
+    // until an IQ slot frees.  So by the time such a candidate reaches insert()
+    // the regular IQ has room (freeEntries != 0) and this block diverts it.
+    // The freeEntries != 0 guard therefore (a) keeps the assert(freeEntries
+    // != 0) IQ path below safe, and (b) acts as an SMT-edge backstop where the
+    // per-thread isFull(tid) at dispatch may not equal the global freeEntries;
+    // in that rare case the candidate stays on the DIQ path (best-effort).
     if (use_delta_iq && freeEntries != 0 && cpu->deltaSingleConsumer)
     {
-        auto delta_it = deltaWakeupMap.find(new_inst->getDeltaProdSeqNum());
-        if (delta_it != deltaWakeupMap.end() && !delta_it->second.empty())
+        if (deltaProducerHasLiveConsumer(new_inst))
         {
             DPRINTF(Delta,
                 "IQDelta: Producer already has a delta consumer; routing "

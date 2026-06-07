@@ -187,6 +187,14 @@ class InstructionQueue
     /** Returns whether or not the DIQ is full for a specific thread. */
     bool isDeltaFull(ThreadID tid);
 
+    /** Returns true if @p inst is a delta candidate whose producer already
+     *  has a live (non-squashed, still-waiting) delta consumer registered in
+     *  deltaWakeupMap.  Used by both the strict one-back-pointer-per-producer
+     *  admission check in insert() and the dispatch-stall decision in
+     *  IEW::dispatchInsts().  Safe on any inst (returns false for
+     *  non-candidates, so getDeltaProdSeqNum() is never called on them). */
+    bool deltaProducerHasLiveConsumer(const DynInstPtr &inst);
+
     /** Returns if there are any ready instructions in the IQ. */
     bool hasReadyInsts();
 
