@@ -173,7 +173,8 @@ def make_outstanding():
     plt.axvline(len(benches) - 0.1, color="0.6", linewidth=0.8,
                 linestyle="--", zorder=1)
 
-    plt.xticks(list(x) + [gx], benches + ["pooled"], rotation=90, fontsize=7)
+    plt.xticks(list(x) + [gx], benches + ["pooled"], rotation=45, ha="right",
+               rotation_mode="anchor", fontsize=7)
     plt.gca().get_xticklabels()[-1].set_fontweight("bold")
     plt.ylabel(f"% of {denom} instructions")
     plt.ylim(0, 100)

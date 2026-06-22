@@ -1,9 +1,10 @@
 .PHONY: check \
-        prepro_sims prepro_sims_whetstone prepro_sims_lbm_s prepro_sims_mcf_s prepro_sims_gcc_s \
-        first-whetstone first-lbm first-mcf first-gcc first-par collect-cpi \
+        first-whetstone first-lbm first-mcf first-gcc \
         first-exchange2 first-fotonik3d first-nab first-x264 \
         first-perlbench first-leela first-deepsjeng first-bwaves \
-        sweep-iq-flat collect-iq-results \
+        first-cactubssn first-omnetpp first-wrf first-xalancbmk \
+        first-cam4 first-pop2 first-imagick first-roms first-xz \
+        sweep-iq-flat collect-iq-results collect-deps collect-outstanding \
         plots
 
 check:
@@ -32,6 +33,10 @@ STATS_GREP      := grep -e "core.cpi" -e "core.ipc" -e "instsAdded" -e "deltaIns
 #   WARMUP   : N > 0 = fast-forward N insts in ATOMIC before timing
 #   O3WARMUP : N > 0 = run N insts on O3 (no stats) before measurement (requires WARMUP > 0)
 #   USE_DEF  : 1 = use default.py instead of magna.py
+#   OT       : collect-* filter only — 1 = match only overtime (ot-) sweep
+#              dirs; 0 (passed explicitly) = exclude them
+#   LIM      : collect-* filter only — 1 = match only single-consumer-limited
+#              (lim-) sweep dirs; 0 (passed explicitly) = exclude them
 # ---------------------------------------------------------------------------
 SLIM     ?= -t 100B
 ZLAT     ?= 0
@@ -39,6 +44,8 @@ SUPER    ?= 0
 WARMUP   ?= 0
 O3WARMUP ?= 0
 USE_DEF  ?= 0
+OT       ?= 0
+LIM      ?= 0
 
 # Script to invoke
 CONFIG := $(if $(filter 1,$(USE_DEF)),$(DEFAULT),$(MAGNA))
@@ -69,25 +76,6 @@ _CTX_TAG     := $(strip $(_TAG_BASE)$(_TAG_SUPER)$(_TAG_WARM)$(_TAG_O3WARM)$(_TA
 IQ_ARGS := --iq-size $(IQ) --diq-size $(DIQ)
 
 M5OUT_ROOT := m5out-sims
-
-# ---------------------------------------------------------------------------
-# SIMS benchmark preprocessing
-# ---------------------------------------------------------------------------
-prepro_sims_whetstone:
-	$(GEM5) --outdir=$(M5OUT_ROOT)/m5out-prepro-sims-$(SIM_TAG)/whetstone $(MAGNA) -b whetstone $(SLIM) && mv $(M5OUT_ROOT)/m5out-prepro-sims-$(SIM_TAG)/whetstone/dist_dependencies.csv dist_dependencies_prepro_whetstone$(SIM_TAG).csv
-
-prepro_sims_lbm_s:
-	$(GEM5) --outdir=$(M5OUT_ROOT)/m5out-prepro-sims-$(SIM_TAG)/lbm_s $(MAGNA) -b lbm_s $(SLIM) && mv $(M5OUT_ROOT)/m5out-prepro-sims-$(SIM_TAG)/lbm_s/dist_dependencies.csv dist_dependencies_prepro_lbm_s$(SIM_TAG).csv
-
-prepro_sims_mcf_s:
-	$(GEM5) --outdir=$(M5OUT_ROOT)/m5out-prepro-sims-$(SIM_TAG)/mcf_s $(MAGNA) -b mcf_s $(SLIM) && mv $(M5OUT_ROOT)/m5out-prepro-sims-$(SIM_TAG)/mcf_s/dist_dependencies.csv dist_dependencies_prepro_mcf_s$(SIM_TAG).csv
-
-prepro_sims_gcc_s:
-	$(GEM5) --outdir=$(M5OUT_ROOT)/m5out-prepro-sims-$(SIM_TAG)/gcc_s $(MAGNA) -b gcc_s $(SLIM) && mv $(M5OUT_ROOT)/m5out-prepro-sims-$(SIM_TAG)/gcc_s/dist_dependencies.csv dist_dependencies_prepro_gcc_s$(SIM_TAG).csv
-
-# Parallel parent: make check && make -j4 prepro_sims
-prepro_sims: prepro_sims_whetstone prepro_sims_lbm_s prepro_sims_mcf_s prepro_sims_gcc_s
-	mv dist_dependencies* plot_dependencies/stats
 
 # ---------------------------------------------------------------------------
 # Single-run targets  (make first-par [-jN] [options])
@@ -141,24 +129,32 @@ first-deepsjeng:
 first-bwaves:
 	$(call run_first,bwaves_s)
 
-first-par: first-whetstone first-lbm first-mcf first-gcc \
-           first-exchange2 first-fotonik3d first-nab first-x264 \
-           first-perlbench first-leela first-deepsjeng first-bwaves
-	@cat $(M5OUT_ROOT)/m5out-$(SIM_TAG)/stat-whetstone-$(SIM_TAG).txt \
-	     $(M5OUT_ROOT)/m5out-$(SIM_TAG)/stat-lbm_s-$(SIM_TAG).txt \
-	     $(M5OUT_ROOT)/m5out-$(SIM_TAG)/stat-mcf_s-$(SIM_TAG).txt \
-	     $(M5OUT_ROOT)/m5out-$(SIM_TAG)/stat-gcc_s-$(SIM_TAG).txt \
-	     $(M5OUT_ROOT)/m5out-$(SIM_TAG)/stat-exchange2_s-$(SIM_TAG).txt \
-	     $(M5OUT_ROOT)/m5out-$(SIM_TAG)/stat-fotonik3d_s-$(SIM_TAG).txt \
-	     $(M5OUT_ROOT)/m5out-$(SIM_TAG)/stat-nab_s-$(SIM_TAG).txt \
-	     $(M5OUT_ROOT)/m5out-$(SIM_TAG)/stat-x264_s-$(SIM_TAG).txt \
-	     $(M5OUT_ROOT)/m5out-$(SIM_TAG)/stat-perlbench_s-$(SIM_TAG).txt \
-	     $(M5OUT_ROOT)/m5out-$(SIM_TAG)/stat-leela_s-$(SIM_TAG).txt \
-	     $(M5OUT_ROOT)/m5out-$(SIM_TAG)/stat-deepsjeng_s-$(SIM_TAG).txt \
-	     $(M5OUT_ROOT)/m5out-$(SIM_TAG)/stat-bwaves_s-$(SIM_TAG).txt
+first-cactubssn:
+	$(call run_first,cactuBSSN_s)
 
-collect-cpi:
-	@bash scripts/collect-cpi.sh
+first-omnetpp:
+	$(call run_first,omnetpp_s)
+
+first-wrf:
+	$(call run_first,wrf_s)
+
+first-xalancbmk:
+	$(call run_first,xalancbmk_s)
+
+first-cam4:
+	$(call run_first,cam4_s)
+
+first-pop2:
+	$(call run_first,pop2_s)
+
+first-imagick:
+	$(call run_first,imagick_s)
+
+first-roms:
+	$(call run_first,roms_s)
+
+first-xz:
+	$(call run_first,xz_s)
 
 # ---------------------------------------------------------------------------
 # IQ/DIQ sweep  (make sweep-iq-flat [-jN] [options])
@@ -169,7 +165,7 @@ collect-cpi:
 # ---------------------------------------------------------------------------
 
 # Configs to sweep: space-separated IQ-DIQ pairs
-IQ_FLAT_BENCHMARKS := whetstone lbm_s mcf_s gcc_s
+# IQ_FLAT_BENCHMARKS := whetstone lbm_s mcf_s gcc_s
 # IQ_DIQ_CONFIGS := \
     32-0  32-10  32-20  32-30 \
     64-0  64-10  64-20  64-30 \
@@ -180,11 +176,6 @@ IQ_FLAT_BENCHMARKS := whetstone lbm_s mcf_s gcc_s
     224-0 224-20 224-40 224-60 224-80 \
     256-0 256-20 256-40 256-60 256-80 \
     280-0 280-20 280-40 280-60 280-80 280-100 280-120
-IQ_DIQ_CONFIGS := \
-           32-10  32-20  32-30  32-40  32-50  32-60  32-70  32-80  32-90  32-100  32-110  32-120  32-130 \
-           64-10  64-20  64-30  64-40  64-50  64-60  64-70  64-80  64-90  64-100 \
-     96-0  96-10  96-20  96-30  96-40  96-50  96-60  96-70 \
-          128-10 128-20 128-30 128-40
 
 define iq_flat_rule
 iq-flat-$(1)-$(2): _TAG := $(_CTX_TAG)_iq$(word 1,$(subst -, ,$(2)))_diq$(word 2,$(subst -, ,$(2)))
@@ -227,6 +218,8 @@ _CFILTER += $(if $(filter     1,$(ZLAT)),_zl)
 _CFILTER += $(if $(filter     1,$(USE_DEF)),_def)
 _CFILTER += $(if $(ONLY_DIQ),_diq$(ONLY_DIQ)/)
 _CFILTER += $(if $(ONLY_IQ),_iq$(ONLY_IQ)_)
+_CFILTER += $(if $(filter     1,$(OT)),ot-)
+_CFILTER += $(if $(filter     1,$(LIM)),lim-)
 _CFILTER_PIPE = $(foreach f,$(_CFILTER), | grep '$(f)')
 
 _CFILTER_EXCL :=
@@ -235,6 +228,8 @@ _CFILTER_EXCL += $(if $(filter command line,$(origin SUPER)),$(if $(filter 0,$(S
 _CFILTER_EXCL += $(if $(filter command line,$(origin ZLAT)),$(if $(filter 0,$(ZLAT)),_zl))
 _CFILTER_EXCL += $(if $(filter command line,$(origin WARMUP)),$(if $(filter 0,$(WARMUP)),_warm))
 _CFILTER_EXCL += $(if $(filter command line,$(origin O3WARMUP)),$(if $(filter 0,$(O3WARMUP)),_o3warm))
+_CFILTER_EXCL += $(if $(filter command line,$(origin OT)),$(if $(filter 0,$(OT)),ot-))
+_CFILTER_EXCL += $(if $(filter command line,$(origin LIM)),$(if $(filter 0,$(LIM)),lim-))
 _CFILTER_EXCL_PIPE = $(foreach f,$(_CFILTER_EXCL), | grep -v '$(f)')
 
 #make collect-iq-results SLIM="" SUPER=1 WARMUP=100M O3WARMUP=100M ZLAT=0 USE_DEF=1
@@ -244,6 +239,79 @@ collect-iq-results:
 	$(if $(_CFILTER_EXCL),@echo "Exclude:$(_CFILTER_EXCL)")
 	@find $(M5OUT_ROOT) -maxdepth 2 -name "stat-*.txt"$(_CFILTER_PIPE)$(_CFILTER_EXCL_PIPE) | sort | xargs cat >> iq-sweep-all.txt
 	@echo "Results written to iq-sweep-all.txt"
+
+# ---------------------------------------------------------------------------
+# Dependency-distance collection  (make collect-deps)
+#   Gathers every dist_dependencies.csv from the IQ=160 sims into one combined
+#   CSV (bench,delta,num) for cross-benchmark plotting.  Filtered like a
+#   simplified collect-iq-results: SLIM selects the simulation length and
+#   SUPER selects/excludes the over-provisioned runs.  Filters should narrow
+#   the match to a single run, otherwise benchmarks get duplicated.
+# ---------------------------------------------------------------------------
+DEPS_OUT := plot_dependencies/stats/dist_dependencies_all160.csv
+
+# Optional filters for collect-deps
+_DFILTER :=
+_DFILTER += $(if $(filter command line,$(origin SLIM)),$(_TAG_BASE))
+_DFILTER += $(if $(filter     1,$(SUPER)),_super)
+_DFILTER += $(if $(filter     1,$(OT)),ot-)
+_DFILTER += $(if $(filter     1,$(LIM)),lim-)
+_DFILTER_PIPE = $(foreach f,$(_DFILTER), | grep '$(f)')
+
+_DFILTER_EXCL :=
+_DFILTER_EXCL += $(if $(filter command line,$(origin SUPER)),$(if $(filter 0,$(SUPER)),_super))
+_DFILTER_EXCL += $(if $(filter command line,$(origin OT)),$(if $(filter 0,$(OT)),ot-))
+_DFILTER_EXCL += $(if $(filter command line,$(origin LIM)),$(if $(filter 0,$(LIM)),lim-))
+_DFILTER_EXCL_PIPE = $(foreach f,$(_DFILTER_EXCL), | grep -v '$(f)')
+
+#make collect-deps SLIM="-c 500M" SUPER=0 OT=1
+collect-deps:
+	$(if $(_DFILTER),@echo "Include:$(_DFILTER)")
+	$(if $(_DFILTER_EXCL),@echo "Exclude:$(_DFILTER_EXCL)")
+	@echo "bench,delta,num" > $(DEPS_OUT)
+	@files=$$(find $(M5OUT_ROOT) -maxdepth 3 -name "dist_dependencies.csv"$(_DFILTER_PIPE)$(_DFILTER_EXCL_PIPE) | sort); \
+	for f in $$files; do \
+	    bench=$$(basename $$(dirname $$f) | sed 's/-[0-9]*-[0-9]*$$//'); \
+	    tail -n +2 "$$f" | sed "s/^/$$bench,/" >> $(DEPS_OUT); \
+	done; \
+	echo "Combined $$(echo "$$files" | grep -c .) benchmark CSVs into $(DEPS_OUT)"
+	@awk -F, 'NR>1 && ++c[$$1","$$2]==2 {d++} END {if (d) print "WARNING: "d" duplicate (bench,delta) pairs - filters match more than one run, add SLIM=/SUPER="}' $(DEPS_OUT)
+
+# ---------------------------------------------------------------------------
+# Outstanding-source collection  (make collect-outstanding)
+#   Gathers every dist_outstanding_srcs.csv into one combined CSV
+#   (bench,outstanding_srcs,num_insts; counted at RENAME, once per renamed inst)
+#   for cross-benchmark plotting, then appends suite-average rows per k as
+#   PERCENTAGES (value in the num_insts column is a percent for those rows):
+#     pooled_pct / arithmean_pct / geomean_pct          - over ALL renamed insts
+#     *_nonready                                         - over non-ready (k>=1) insts only
+#   This CSV is emitted ONLY by the IQ=160/DIQ=0 baseline sims (the DIQ
+#   characterization gate), so a bare run already matches just those.  Filtered
+#   like collect-deps (SLIM selects the simulation length, SUPER selects/excludes
+#   the over-provisioned runs) to disambiguate when several 160/0 sweeps coexist.
+# ---------------------------------------------------------------------------
+SRCS_OUT := plot_dependencies/stats/dist_outstanding_srcs_all160.csv
+
+#make collect-outstanding SLIM="-c 500M" SUPER=0 OT=1
+collect-outstanding:
+	$(if $(_DFILTER),@echo "Include:$(_DFILTER)")
+	$(if $(_DFILTER_EXCL),@echo "Exclude:$(_DFILTER_EXCL)")
+	@echo "bench,outstanding_srcs,num_insts" > $(SRCS_OUT)
+	@files=$$(find $(M5OUT_ROOT) -maxdepth 3 -name "dist_outstanding_srcs.csv"$(_DFILTER_PIPE)$(_DFILTER_EXCL_PIPE) | sort); \
+	for f in $$files; do \
+	    bench=$$(basename $$(dirname $$f) | sed 's/-[0-9]*-[0-9]*$$//'); \
+	    tail -n +2 "$$f" | sed "s/^/$$bench,/" >> $(SRCS_OUT); \
+	done; \
+	echo "Combined $$(echo "$$files" | grep -c .) benchmark CSVs into $(SRCS_OUT)"
+	@awk -F, 'NR>1 && ++c[$$1","$$2]==2 {d++} END {if (d) print "WARNING: "d" duplicate (bench,k) pairs - filters match more than one run, add SLIM=/SUPER="}' $(SRCS_OUT)
+	@# Append suite-average rows per k, as PERCENTAGES (not counts), for two
+	@# denominators: *_pct over ALL renamed insts, *_nonready over the non-ready
+	@# (k>=1) subset.  pooled = instruction-weighted (sum counts / total);
+	@# arithmean = mean of per-bench shares (equal weight, zeros included);
+	@# geomean = geomean of per-bench shares (zeros skipped, to match plot_dep.py).
+	@awk -F, 'NR>1 && $$1!="pooled_pct" && $$1!="arithmean_pct" && $$1!="geomean_pct" && $$1!="pooled_pct_nonready" && $$1!="arithmean_pct_nonready" && $$1!="geomean_pct_nonready" {b=$$1;k=$$2+0;c=$$3+0;cnt[b","k]=c;tot[b]+=c;pool[k]+=c;grand+=c;if(!(b in B)){B[b]=1;nb++};K[k]=1} END {n=0;for(k in K)kk[n++]=k;for(i=1;i<n;i++){v=kk[i];j=i-1;while(j>=0&&kk[j]>v){kk[j+1]=kk[j];j--}kk[j+1]=v};gnr=grand-pool[0];for(b in B){c0=((b","0) in cnt)?cnt[b","0]:0;ds[b]=tot[b]-c0};for(i=0;i<n;i++){k=kk[i];printf "pooled_pct,%d,%.2f\n",k,100*pool[k]/grand};for(i=0;i<n;i++){k=kk[i];s=0;for(b in B){c=((b","k) in cnt)?cnt[b","k]:0;s+=100*c/tot[b]};printf "arithmean_pct,%d,%.2f\n",k,s/nb};for(i=0;i<n;i++){k=kk[i];gs=0;gn=0;for(b in B){c=((b","k) in cnt)?cnt[b","k]:0;sh=100*c/tot[b];if(sh>0){gs+=log(sh);gn++}};printf "geomean_pct,%d,%.2f\n",k,(gn>0)?exp(gs/gn):0};for(i=0;i<n;i++){k=kk[i];if(k<1)continue;printf "pooled_pct_nonready,%d,%.2f\n",k,100*pool[k]/gnr};for(i=0;i<n;i++){k=kk[i];if(k<1)continue;s=0;for(b in B){c=((b","k) in cnt)?cnt[b","k]:0;s+=(ds[b]>0)?100*c/ds[b]:0};printf "arithmean_pct_nonready,%d,%.2f\n",k,s/nb};for(i=0;i<n;i++){k=kk[i];if(k<1)continue;gs=0;gn=0;for(b in B){c=((b","k) in cnt)?cnt[b","k]:0;if(ds[b]>0){sh=100*c/ds[b];if(sh>0){gs+=log(sh);gn++}}};printf "geomean_pct_nonready,%d,%.2f\n",k,(gn>0)?exp(gs/gn):0}}' $(SRCS_OUT) > $(SRCS_OUT).means
+	@cat $(SRCS_OUT).means >> $(SRCS_OUT) && rm -f $(SRCS_OUT).means
+	@echo "Appended {pooled,arithmean,geomean}_pct[_nonready] percentage rows to $(SRCS_OUT)"
 
 PLOT_SCRIPT := python plot_ipc/plot_ipc.py
 
